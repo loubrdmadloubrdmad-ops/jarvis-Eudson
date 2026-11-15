@@ -9,26 +9,65 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Connexion au cerveau Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Route pour tester si Jarvis est en ligne
+// --- LA NOUVELLE PAGE WEB AVEC LE CHAT ---
 app.get('/', (req, res) => {
-  res.send('Wesh mon gars, Jarvis est en ligne et prêt à bosser ! 🤖🔥');
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Mon Jarvis</title>
+        <style>
+            body { font-family: Arial; background: #111; color: white; padding: 20px; text-align: center; }
+            input { width: 80%; padding: 10px; margin-top: 20px; border-radius: 5px; border: none; }
+            button { padding: 10px 20px; background: #00ff88; border: none; border-radius: 5px; font-weight: bold; margin-top: 10px; cursor: pointer; }
+            #reponse { margin-top: 20px; font-size: 18px; color: #00ff88; background: #222; padding: 20px; border-radius: 10px; min-height: 50px; }
+        </style>
+    </head>
+    <body>
+        <h1>Wesh mon gars, je suis Jarvis 🤖</h1>
+        <input type="text" id="message" placeholder="Écris ton message ici...">
+        <br>
+        <button onclick="envoyer()">Parler à Jarvis</button>
+        <div id="reponse">...</div>
+
+        <script>
+            async function envoyer() {
+                const msg = document.getElementById('message').value;
+                const divReponse = document.getElementById('reponse');
+                divReponse.innerText = "Jarvis réfléchit...";
+
+                try {
+                    const reponse = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: msg })
+                    });
+                    const data = await reponse.json();
+                    divReponse.innerText = data.reply;
+                } catch (erreur) {
+                    divReponse.innerText = "Erreur: " + erreur.message;
+                }
+            }
+        </script>
+    </body>
+    </html>
+  `);
 });
 
-// Route pour discuter avec Jarvis
+// --- LA ROUTE POUR LE CERVEAU (GEMINI) ---
 app.post('/chat', async (req, res) => {
   try {
     const messageUtilisateur = req.body.message;
     
-    // On configure le cerveau
     const model = genAI.getGenerativeModel({ 
         model: "gemini-1.5-flash",
         systemInstruction: "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'."
     });
 
-    // Jarvis réfléchit et répond
     const result = await model.generateContent(messageUtilisateur);
     const response = await result.response;
     const text = response.text();
