@@ -9,7 +9,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// On force la version v1beta de l'API pour éviter l'erreur 404
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, { apiVersion: "v1beta" });
 
 // --- LA PAGE WEB (Interface) ---
 app.get('/', (req, res) => {
@@ -63,8 +64,8 @@ app.post('/chat', async (req, res) => {
   try {
     const messageUtilisateur = req.body.message;
     
-    // Le modèle corrigé ici 👇
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Le modèle corrigé avec le suffixe -latest
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
     const prompt = "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'. Voici mon message : " + messageUtilisateur;
 
