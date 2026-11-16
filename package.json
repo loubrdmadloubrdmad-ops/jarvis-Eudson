@@ -1,4 +1,4 @@
-import express from 'express';
+ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
@@ -9,10 +9,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialisation avec la nouvelle bibliothèque
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// --- LA PAGE WEB (Interface) ---
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -59,12 +57,10 @@ app.get('/', (req, res) => {
   `);
 });
 
-// --- LE CERVEAU (GEMINI) ---
 app.post('/chat', async (req, res) => {
   try {
     const messageUtilisateur = req.body.message;
     
-    // La syntaxe officielle du nouveau SDK
     const response = await ai.models.generateContent({
         model: 'gemini-flash-latest',
         contents: "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'. Voici mon message : " + messageUtilisateur,
