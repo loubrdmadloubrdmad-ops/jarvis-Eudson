@@ -26,53 +26,185 @@ const PAGE = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mon Jarvis</title>
+  <title>Jarvis</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #111; color: white; padding: 20px; text-align: center; }
-    input { width: 80%; padding: 10px; margin-top: 20px; border-radius: 5px; border: none; }
-    button { padding: 10px 20px; background: #00ff88; border: none; border-radius: 5px; font-weight: bold; margin-top: 10px; cursor: pointer; }
-    #reponse { margin-top: 20px; font-size: 18px; color: #00ff88; background: #222; padding: 20px; border-radius: 10px; min-height: 50px; text-align: left; white-space: pre-wrap; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #0b0b0f;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+    }
+    header {
+      padding: 14px 16px;
+      background: #15151c;
+      border-bottom: 1px solid #23232e;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 18px; }
+    header h1 span { color: #00ff88; }
+    #nouveau {
+      background: transparent;
+      color: #9aa;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bulle {
+      max-width: 82%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 16px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .user {
+      align-self: flex-end;
+      background: #00ff88;
+      color: #05150d;
+      border-bottom-right-radius: 4px;
+    }
+    .jarvis {
+      align-self: flex-start;
+      background: #1e1e28;
+      color: #e9fff3;
+      border-bottom-left-radius: 4px;
+    }
+    .erreur {
+      align-self: flex-start;
+      background: #3a1a1a;
+      color: #ffb3b3;
+      border-bottom-left-radius: 4px;
+    }
+    .reflexion { opacity: 0.7; font-style: italic; }
+    #barre {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      background: #15151c;
+      border-top: 1px solid #23232e;
+    }
+    #message {
+      flex: 1;
+      padding: 12px 14px;
+      border-radius: 22px;
+      border: none;
+      font-size: 16px;
+      background: #23232e;
+      color: #fff;
+      outline: none;
+    }
+    #envoyer {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      border: none;
+      background: #00ff88;
+      color: #05150d;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    #envoyer:disabled { opacity: 0.5; }
   </style>
 </head>
 <body>
-  <h1>Wesh mon gars, je suis Jarvis 🤖</h1>
-  <input type="text" id="message" placeholder="Écris ton message ici...">
-  <br>
-  <button id="btn">Parler à Jarvis</button>
-  <div id="reponse">...</div>
+  <header>
+    <h1>Jarvis <span>●</span></h1>
+    <button id="nouveau">Nouvelle conversation</button>
+  </header>
+
+  <div id="chat"></div>
+
+  <div id="barre">
+    <input type="text" id="message" placeholder="Écris ton message..." autocomplete="off">
+    <button id="envoyer" aria-label="Envoyer">&#10148;</button>
+  </div>
 
   <script>
-    const champ = document.getElementById('message');
-    const divReponse = document.getElementById('reponse');
-    const historique = [];
+    var chat = document.getElementById('chat');
+    var champ = document.getElementById('message');
+    var bouton = document.getElementById('envoyer');
+    var historique = [];
+    var enCours = false;
+
+    function ajouterBulle(texte, classe) {
+      var div = document.createElement('div');
+      div.className = 'bulle ' + classe;
+      div.textContent = texte;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function accueil() {
+      chat.innerHTML = '';
+      ajouterBulle('Wesh mon gars ! Je suis Jarvis. Kisa pou m f\u00e8 pou ou ?', 'jarvis');
+    }
 
     async function envoyer() {
-      const msg = champ.value.trim();
-      if (!msg) return;
+      var msg = champ.value.trim();
+      if (!msg || enCours) return;
+
+      enCours = true;
+      bouton.disabled = true;
       champ.value = '';
-      divReponse.innerText = 'Jarvis réfléchit...';
+      ajouterBulle(msg, 'user');
+      var attente = ajouterBulle('Jarvis r\u00e9fl\u00e9chit...', 'jarvis reflexion');
 
       try {
-        const reponse = await fetch('/chat', {
+        var reponse = await fetch('/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, historique })
+          body: JSON.stringify({ message: msg, historique: historique })
         });
-        const data = await reponse.json();
+        var data = await reponse.json();
         if (data.reply) {
           historique.push({ role: 'user', parts: [{ text: msg }] });
           historique.push({ role: 'model', parts: [{ text: data.reply }] });
-          divReponse.innerText = data.reply;
+          attente.className = 'bulle jarvis';
+          attente.textContent = data.reply;
         } else {
-          divReponse.innerText = data.error || 'Erreur inconnue';
+          attente.className = 'bulle erreur';
+          attente.textContent = data.error || 'Erreur inconnue';
         }
       } catch (erreur) {
-        divReponse.innerText = 'Erreur réseau: ' + erreur.message;
+        attente.className = 'bulle erreur';
+        attente.textContent = 'Erreur r\u00e9seau : ' + erreur.message;
       }
+
+      enCours = false;
+      bouton.disabled = false;
+      chat.scrollTop = chat.scrollHeight;
+      champ.focus();
     }
 
-    document.getElementById('btn').addEventListener('click', envoyer);
-    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') envoyer(); });
+    bouton.addEventListener('click', envoyer);
+    champ.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') envoyer();
+    });
+    document.getElementById('nouveau').addEventListener('click', function () {
+      historique = [];
+      accueil();
+    });
+
+    accueil();
   </script>
 </body>
 </html>`;
