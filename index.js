@@ -11,7 +11,7 @@ app.use(express.json());
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// --- LA PAGE WEB ---
+// --- LA PAGE WEB (Interface) ---
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -47,7 +47,6 @@ app.get('/', (req, res) => {
                         body: JSON.stringify({ message: msg })
                     });
                     const data = await reponse.json();
-                    // On affiche la réponse ou l'erreur s'il y en a une
                     divReponse.innerText = data.reply ? data.reply : (data.error || "Erreur inconnue");
                 } catch (erreur) {
                     divReponse.innerText = "Erreur réseau: " + erreur.message;
@@ -64,10 +63,9 @@ app.post('/chat', async (req, res) => {
   try {
     const messageUtilisateur = req.body.message;
     
-    // On utilise le modèle de base pour éviter les bugs de version
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // Le modèle corrigé ici 👇
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // On met les règles directement dans le message pour que ça marche à tous les coups
     const prompt = "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'. Voici mon message : " + messageUtilisateur;
 
     const result = await model.generateContent(prompt);
