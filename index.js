@@ -11,7 +11,7 @@ app.use(express.json());
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// --- LA NOUVELLE PAGE WEB AVEC LE CHAT ---
+// --- LA PAGE WEB ---
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -24,7 +24,7 @@ app.get('/', (req, res) => {
             body { font-family: Arial; background: #111; color: white; padding: 20px; text-align: center; }
             input { width: 80%; padding: 10px; margin-top: 20px; border-radius: 5px; border: none; }
             button { padding: 10px 20px; background: #00ff88; border: none; border-radius: 5px; font-weight: bold; margin-top: 10px; cursor: pointer; }
-            #reponse { margin-top: 20px; font-size: 18px; color: #00ff88; background: #222; padding: 20px; border-radius: 10px; min-height: 50px; }
+            #reponse { margin-top: 20px; font-size: 18px; color: #00ff88; background: #222; padding: 20px; border-radius: 10px; min-height: 50px; text-align: left;}
         </style>
     </head>
     <body>
@@ -47,9 +47,10 @@ app.get('/', (req, res) => {
                         body: JSON.stringify({ message: msg })
                     });
                     const data = await reponse.json();
-                    divReponse.innerText = data.reply;
+                    // On affiche la réponse ou l'erreur s'il y en a une
+                    divReponse.innerText = data.reply ? data.reply : (data.error || "Erreur inconnue");
                 } catch (erreur) {
-                    divReponse.innerText = "Erreur: " + erreur.message;
+                    divReponse.innerText = "Erreur réseau: " + erreur.message;
                 }
             }
         </script>
@@ -58,23 +59,25 @@ app.get('/', (req, res) => {
   `);
 });
 
-// --- LA ROUTE POUR LE CERVEAU (GEMINI) ---
+// --- LE CERVEAU (GEMINI) ---
 app.post('/chat', async (req, res) => {
   try {
     const messageUtilisateur = req.body.message;
     
-    const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-        systemInstruction: "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'."
-    });
+    // On utilise le modèle de base pour éviter les bugs de version
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-    const result = await model.generateContent(messageUtilisateur);
+    // On met les règles directement dans le message pour que ça marche à tous les coups
+    const prompt = "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'. Voici mon message : " + messageUtilisateur;
+
+    const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
 
     res.json({ reply: text });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(error);
+    res.status(500).json({ error: "Erreur du serveur : " + error.message });
   }
 });
 
