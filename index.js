@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
@@ -9,8 +9,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Nouvelle connexion avec le nouvel outil de Google
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// --- LA PAGE WEB (Interface) ---
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -57,19 +59,17 @@ app.get('/', (req, res) => {
   `);
 });
 
+// --- LE CERVEAU (GEMINI) ---
 app.post('/chat', async (req, res) => {
   try {
     const messageUtilisateur = req.body.message;
     
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'. Voici mon message : " + messageUtilisateur,
+    });
 
-    const prompt = "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'. Voici mon message : " + messageUtilisateur;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-
-    res.json({ reply: text });
+    res.json({ reply: response.text });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Erreur du serveur : " + error.message });
