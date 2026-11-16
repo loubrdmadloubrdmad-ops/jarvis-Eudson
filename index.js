@@ -19,6 +19,8 @@ const PERSONNALITE =
   "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. " +
   "Tu es cool, efficace et tu m'appelles 'mon gars'.";
 
+const MODELES = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+
 const PAGE = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -75,6 +77,26 @@ const PAGE = `<!DOCTYPE html>
 </body>
 </html>`;
 
+async function demanderAGemini(contents) {
+  let derniereErreur;
+  for (const model of MODELES) {
+    for (let essai = 0; essai < 2; essai++) {
+      try {
+        return await ai.models.generateContent({
+          model,
+          contents,
+          config: { systemInstruction: PERSONNALITE },
+        });
+      } catch (err) {
+        derniereErreur = err;
+        console.error(`Échec avec ${model} (essai ${essai + 1}):`, err.message);
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+  }
+  throw derniereErreur;
+}
+
 app.get('/', (req, res) => {
   res.send(PAGE);
 });
@@ -86,16 +108,15 @@ app.post('/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message vide.' });
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
-      contents: [...historique, { role: 'user', parts: [{ text: message }] }],
-      config: { systemInstruction: PERSONNALITE },
-    });
+    const response = await demanderAGemini([
+      ...historique,
+      { role: 'user', parts: [{ text: message }] },
+    ]);
 
     res.json({ reply: response.text });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Erreur du serveur : ' + error.message });
+    res.status(500).json({ error: 'Jarvis est surchargé, réessaie dans un instant.' });
   }
 });
 
