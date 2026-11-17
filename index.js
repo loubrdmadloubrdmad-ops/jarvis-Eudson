@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 dotenv.config();
 
@@ -9,258 +9,245 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-if (!process.env.GEMINI_API_KEY) {
-  console.error('GEMINI_API_KEY manquante : ajoute-la dans les variables Render.');
-}
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-const PERSONNALITE =
-  "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. " +
-  "Tu es cool, efficace et tu m'appelles 'mon gars'.";
-
-const MODELES = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
-
-const PAGE = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jarvis</title>
-  <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; }
-    body {
-      font-family: Arial, sans-serif;
-      background: #0b0b0f;
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      height: 100dvh;
-    }
-    header {
-      padding: 14px 16px;
-      background: #15151c;
-      border-bottom: 1px solid #23232e;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    header h1 { margin: 0; font-size: 18px; }
-    header h1 span { color: #00ff88; }
-    #nouveau {
-      background: transparent;
-      color: #9aa;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    #chat {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .bulle {
-      max-width: 82%;
-      padding: 10px 14px;
-      border-radius: 18px;
-      font-size: 16px;
-      line-height: 1.4;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-    .user {
-      align-self: flex-end;
-      background: #00ff88;
-      color: #05150d;
-      border-bottom-right-radius: 4px;
-    }
-    .jarvis {
-      align-self: flex-start;
-      background: #1e1e28;
-      color: #e9fff3;
-      border-bottom-left-radius: 4px;
-    }
-    .erreur {
-      align-self: flex-start;
-      background: #3a1a1a;
-      color: #ffb3b3;
-      border-bottom-left-radius: 4px;
-    }
-    .reflexion { opacity: 0.7; font-style: italic; }
-    #barre {
-      display: flex;
-      gap: 8px;
-      padding: 10px;
-      background: #15151c;
-      border-top: 1px solid #23232e;
-    }
-    #message {
-      flex: 1;
-      padding: 12px 14px;
-      border-radius: 22px;
-      border: none;
-      font-size: 16px;
-      background: #23232e;
-      color: #fff;
-      outline: none;
-    }
-    #envoyer {
-      width: 46px;
-      height: 46px;
-      border-radius: 50%;
-      border: none;
-      background: #00ff88;
-      color: #05150d;
-      font-size: 20px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    #envoyer:disabled { opacity: 0.5; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Jarvis <span>●</span></h1>
-    <button id="nouveau">Nouvelle conversation</button>
-  </header>
-
-  <div id="chat"></div>
-
-  <div id="barre">
-    <input type="text" id="message" placeholder="Écris ton message..." autocomplete="off">
-    <button id="envoyer" aria-label="Envoyer">&#10148;</button>
-  </div>
-
-  <script>
-    var chat = document.getElementById('chat');
-    var champ = document.getElementById('message');
-    var bouton = document.getElementById('envoyer');
-    var historique = [];
-    var enCours = false;
-
-    function ajouterBulle(texte, classe) {
-      var div = document.createElement('div');
-      div.className = 'bulle ' + classe;
-      div.textContent = texte;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-      return div;
-    }
-
-    function accueil() {
-      chat.innerHTML = '';
-      ajouterBulle('Wesh mon gars ! Je suis Jarvis. Kisa pou m f\u00e8 pou ou ?', 'jarvis');
-    }
-
-    async function envoyer() {
-      var msg = champ.value.trim();
-      if (!msg || enCours) return;
-
-      enCours = true;
-      bouton.disabled = true;
-      champ.value = '';
-      ajouterBulle(msg, 'user');
-      var attente = ajouterBulle('Jarvis r\u00e9fl\u00e9chit...', 'jarvis reflexion');
-
-      try {
-        var reponse = await fetch('/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, historique: historique })
-        });
-        var data = await reponse.json();
-        if (data.reply) {
-          historique.push({ role: 'user', parts: [{ text: msg }] });
-          historique.push({ role: 'model', parts: [{ text: data.reply }] });
-          attente.className = 'bulle jarvis';
-          attente.textContent = data.reply;
-        } else {
-          attente.className = 'bulle erreur';
-          attente.textContent = data.error || 'Erreur inconnue';
-        }
-      } catch (erreur) {
-        attente.className = 'bulle erreur';
-        attente.textContent = 'Erreur r\u00e9seau : ' + erreur.message;
-      }
-
-      enCours = false;
-      bouton.disabled = false;
-      chat.scrollTop = chat.scrollHeight;
-      champ.focus();
-    }
-
-    bouton.addEventListener('click', envoyer);
-    champ.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') envoyer();
-    });
-    document.getElementById('nouveau').addEventListener('click', function () {
-      historique = [];
-      accueil();
-    });
-
-    accueil();
-  </script>
-</body>
-</html>`;
-
-async function demanderAGemini(contents) {
-  let derniereErreur;
-  for (const model of MODELES) {
-    for (let essai = 0; essai < 2; essai++) {
-      try {
-        return await ai.models.generateContent({
-          model,
-          contents,
-          config: { systemInstruction: PERSONNALITE },
-        });
-      } catch (err) {
-        derniereErreur = err;
-        console.error(`Échec avec ${model} (essai ${essai + 1}):`, err.message);
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    }
-  }
-  throw derniereErreur;
-}
-
+// --- LA PAGE WEB STYLE CYBERPUNK ---
 app.get('/', (req, res) => {
-  res.send(PAGE);
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>JARVIS - Interface</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+            
+            body { 
+                margin: 0; padding: 0; 
+                background-color: #000; 
+                color: #00ff00; 
+                font-family: 'Share Tech Mono', monospace;
+                overflow: hidden;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+            }
+
+            /* Code binaire en arrière-plan */
+            #matrix-bg {
+                position: absolute;
+                top: 0; left: 0; width: 100%; height: 100%;
+                opacity: 0.1;
+                z-index: 0;
+                pointer-events: none;
+            }
+
+            /* Le conteneur principal en "verre" */
+            .glass-panel {
+                position: relative;
+                z-index: 1;
+                width: 90%;
+                max-width: 500px;
+                background: rgba(0, 20, 0, 0.6);
+                backdrop-filter: blur(10px);
+                border: 1px solid #00ff00;
+                box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+                border-radius: 10px;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            h1 {
+                text-shadow: 0 0 10px #00ff00;
+                letter-spacing: 5px;
+                margin-bottom: 5px;
+            }
+
+            .status {
+                font-size: 12px;
+                color: #00aa00;
+                margin-bottom: 20px;
+            }
+
+            /* L'égaliseur qui vibre */
+            .equalizer {
+                display: flex;
+                gap: 5px;
+                height: 40px;
+                align-items: flex-end;
+                margin-bottom: 20px;
+            }
+            .bar {
+                width: 5px;
+                background-color: #00ff00;
+                box-shadow: 0 0 5px #00ff00;
+                border-radius: 2px;
+                transition: height 0.1s ease;
+            }
+            /* Animation au repos */
+            .equalizer.idle .bar { height: 5px; }
+
+            /* Zone de chat */
+            #reponse {
+                width: 100%;
+                min-height: 100px;
+                background: rgba(0, 0, 0, 0.8);
+                border: 1px solid #005500;
+                color: #00ff00;
+                padding: 10px;
+                margin-bottom: 15px;
+                box-sizing: border-box;
+                font-size: 14px;
+                overflow-y: auto;
+                max-height: 200px;
+            }
+
+            input {
+                width: 100%;
+                background: transparent;
+                border: 1px solid #00ff00;
+                color: #00ff00;
+                padding: 10px;
+                font-family: 'Share Tech Mono', monospace;
+                outline: none;
+                box-sizing: border-box;
+                margin-bottom: 10px;
+            }
+            input::placeholder { color: #005500; }
+
+            button {
+                width: 100%;
+                background: #00ff00;
+                color: #000;
+                border: none;
+                padding: 12px;
+                font-family: 'Share Tech Mono', monospace;
+                font-weight: bold;
+                cursor: pointer;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                box-shadow: 0 0 10px #00ff00;
+                transition: 0.2s;
+            }
+            button:active { background: #00aa00; box-shadow: none; }
+        </style>
+    </head>
+    <body>
+
+        <!-- Effet visuel de code -->
+        <canvas id="matrix-bg"></canvas>
+
+        <!-- Panneau en verre -->
+        <div class="glass-panel">
+            <h1>JARVIS</h1>
+            <div class="status">SYSTEM ONLINE // SECURE CONNECTION</div>
+
+            <!-- Les barres qui vibrent -->
+            <div class="equalizer idle" id="eq">
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            </div>
+
+            <div id="reponse">En attente d'instruction...</div>
+
+            <input type="text" id="message" placeholder="Entrez votre commande...">
+            <button onclick="envoyer()">Transmettre</button>
+        </div>
+
+        <script>
+            // Animation des barres (Egaliseur)
+            const bars = document.querySelectorAll('.bar');
+            let isTalking = false;
+            setInterval(() => {
+                if (isTalking) {
+                    bars.forEach(bar => {
+                        bar.style.height = Math.random() * 40 + 'px';
+                    });
+                } else {
+                    bars.forEach(bar => {
+                        bar.style.height = Math.random() * 10 + 5 + 'px';
+                    });
+                }
+            }, 100);
+
+            // Effet Matrix (Pluie de code)
+            const canvas = document.getElementById('matrix-bg');
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const chars = "0101010101010101JARVIS01";
+            const fontSize = 16;
+            const columns = canvas.width / fontSize;
+            const drops = [];
+            for (let x = 0; x < columns; x++) drops[x] = 1;
+
+            function drawMatrix() {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#00ff00";
+                ctx.font = fontSize + "px monospace";
+                for (let i = 0; i < drops.length; i++) {
+                    const text = chars[Math.floor(Math.random() * chars.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                    drops[i]++;
+                }
+            }
+            setInterval(drawMatrix, 50);
+
+            // Envoi du message
+            async function envoyer() {
+                const msg = document.getElementById('message').value;
+                const divReponse = document.getElementById('reponse');
+                if (!msg) return;
+
+                divReponse.innerText = "> Traitement en cours...";
+                document.getElementById('message').value = "";
+                isTalking = true; // Active les barres
+
+                try {
+                    const reponse = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: msg })
+                    });
+                    const data = await reponse.json();
+                    
+                    divReponse.innerText = "> " + (data.reply ? data.reply : (data.error || "Erreur"));
+                } catch (erreur) {
+                    divReponse.innerText = "> ERREUR RESEAU: " + erreur.message;
+                } finally {
+                    isTalking = false; // Désactive les barres
+                }
+            }
+        </script>
+    </body>
+    </html>
+  `);
 });
 
+// --- LE CERVEAU (GEMINI) ---
 app.post('/chat', async (req, res) => {
   try {
-    const { message, historique = [] } = req.body;
-    if (!message || !message.trim()) {
-      return res.status(400).json({ error: 'Message vide.' });
-    }
+    const messageUtilisateur = req.body.message;
+    
+    // Utilisation du modèle le plus récent
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = "Tu es Jarvis, mon assistant personnel haïtien. Tu parles français et créole. Tu es cool, efficace et tu m'appelles 'mon gars'. Voici mon message : " + messageUtilisateur;
 
-    const response = await demanderAGemini([
-      ...historique,
-      { role: 'user', parts: [{ text: message }] },
-    ]);
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
 
-    res.json({ reply: response.text });
+    res.json({ reply: text });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Jarvis est surchargé, réessaie dans un instant.' });
-  }
-});
-
-// Liste les modèles disponibles pour ta clé (utile si tu as une 404)
-app.get('/modeles', async (req, res) => {
-  try {
-    const liste = [];
-    const pager = await ai.models.list();
-    for await (const m of pager) liste.push(m.name);
-    res.json(liste);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Erreur du serveur : " + error.message });
   }
 });
 
