@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Jarvis-Eudson</title>
+<style>
+  :root {
+    --neon: #39FF14;
+    --neon-dim: rgba(57, 255, 20, 0.35);
+    --neon-faint: rgba(57, 255, 20, 0.12);
+    --bg: #000;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--neon);
+    font-family: "Courier New", ui-monospace, monospace; overflow: hidden; }
+  #app { height: 100dvh; display: flex; flex-direction: column; align-items: center;
+    padding: max(12px, env(safe-area-inset-top)) 14px max(12px, env(safe-area-inset-bottom)); gap: 10px; }
+
+  header { width: 100%; display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; letter-spacing: 3px; text-shadow: 0 0 8px var(--neon); }
+  #status { opacity: .8; }
+  #sound { background: none; border: 1px solid var(--neon-dim); color: var(--neon);
+    border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 12px; }
+
+  /* Visage */
+  #face-wrap { position: relative; flex: 0 1 38%; min-height: 150px; aspect-ratio: 5/6;
+    animation: float 5s ease-in-out infinite; }
+  #face { width: 100%; height: 100%; filter: drop-shadow(0 0 6px var(--neon)) drop-shadow(0 0 18px var(--neon-dim)); }
+  #face-wrap::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(57,255,20,.07) 3px 4px);
+    mask-image: radial-gradient(ellipse at center, #000 55%, transparent 80%); }
+  #scan { position: absolute; left: 8%; right: 8%; height: 2px; background: var(--neon);
+    box-shadow: 0 0 12px var(--neon); opacity: .5; animation: scan 3.2s linear infinite; }
+  @keyframes scan { 0% { top: 6%; } 100% { top: 94%; } }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+  .eye { transform-box: fill-box; transform-origin: center; animation: blink 5s infinite; }
+  @keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+  body[data-mode="thinking"] #face .ring { animation: spin 2s linear infinite; }
+  .ring { transform-origin: 100px 120px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Égaliseur */
+  #wave { width: 100%; height: 70px; flex: none; }
+
+  /* Journal */
+  #log { flex: 1 1 auto; width: 100%; min-height: 0; overflow-y: auto; font-size: 13px; line-height: 1.45;
+    border: 1px solid var(--neon-faint); border-radius: 10px; padding: 8px 10px; }
+  #log p { margin-bottom: 6px; }
+  #log .me { opacity: .6; }
+  #log .me::before { content: "> "; }
+  #log .ai::before { content: "◆ "; text-shadow: 0 0 6px var(--neon); }
+
+  /* Contrôles */
+  #controls { width: 100%; display: flex; gap: 8px; align-items: center; }
+  #input { flex: 1; min-width: 0; background: transparent; border: 1px solid var(--neon-dim); color: var(--neon);
+    border-radius: 24px; padding: 12px 16px; font: inherit; font-size: 16px; outline: none; }
+  #input:focus { border-color: var(--neon); box-shadow: 0 0 10px var(--neon-dim); }
+  #input::placeholder { color: var(--neon-dim); }
+  .btn { flex: none; width: 48px; height: 48px; border-radius: 50%; background: transparent; color: var(--neon);
+    border: 1px solid var(--neon); font-size: 20px; display: grid; place-items: center; cursor: pointer; }
+  .btn:active { background: var(--neon-faint); }
+  #mic { width: 56px; height: 56px; box-shadow: 0 0 10px var(--neon-dim); }
+  body[data-mode="listening"] #mic { background: var(--neon); color: #000; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 24px var(--neon); } }
+
+  /* Mot d'appel « Jarvis » */
+  #wake { width: 100%; flex: none; background: transparent; color: var(--neon); border: 1px dashed var(--neon-dim);
+    border-radius: 10px; padding: 9px 10px; font: inherit; font-size: 12px; letter-spacing: 1px; cursor: pointer; }
+  #wake:active { background: var(--neon-faint); }
+  #wake.on { border-style: solid; border-color: var(--neon); box-shadow: 0 0 12px var(--neon-dim);
+    text-shadow: 0 0 6px var(--neon); animation: pulse 2.4s infinite; }
+</style>
+</head>
+<body data-mode="idle">
+<div id="app">
+  <header>
+    <span>JARVIS-EUDSON</span>
+    <span id="status">EN VEILLE</span>
+    <button id="sound" type="button" aria-label="Activer/couper la voix">🔊</button>
+  </header>
+
+  <div id="face-wrap">
+    <svg id="face" viewBox="0 0 200 240" fill="none" stroke="#39FF14" stroke-width="1.4" stroke-linecap="round">
+      <!-- anneau extérieur -->
+      <g class="ring" opacity=".5">
+        <circle cx="100" cy="120" r="108" stroke-dasharray="4 10"/>
+      </g>
+      <!-- contour du crâne -->
+      <path d="M100 18 C58 18 42 52 42 92 C42 118 48 138 60 158 C70 174 80 196 100 220
+               C120 196 130 174 140 158 C152 138 158 118 158 92 C158 52 142 18 100 18 Z"/>
+      <!-- lignes de grille holographique -->
+      <g opacity=".35">
+        <path d="M52 66 Q100 52 148 66"/>
+        <path d="M44 92 Q100 78 156 92"/>
+        <path d="M46 118 Q100 106 154 118"/>
+        <path d="M56 144 Q100 134 144 144"/>
+        <path d="M72 172 Q100 164 128 172"/>
+        <path d="M100 18 V220"/>
+        <path d="M72 24 Q64 120 82 208"/>
+        <path d="M128 24 Q136 120 118 208"/>
+      </g>
+      <!-- yeux -->
+      <g class="eye"><ellipse cx="76" cy="98" rx="14" ry="6" fill="rgba(57,255,20,.25)"/>
+        <circle cx="76" cy="98" r="2.5" fill="#39FF14"/></g>
+      <g class="eye"><ellipse cx="124" cy="98" rx="14" ry="6" fill="rgba(57,255,20,.25)"/>
+        <circle cx="124" cy="98" r="2.5" fill="#39FF14"/></g>
+      <!-- nez -->
+      <path d="M100 108 L94 140 L106 140" opacity=".7"/>
+      <!-- bouche (réagit au niveau sonore) -->
+      <ellipse id="mouth" cx="100" cy="170" rx="18" ry="1.5" fill="rgba(57,255,20,.3)"/>
+    </svg>
+    <div id="scan"></div>
+  </div>
+
+  <canvas id="wave"></canvas>
+
+  <button id="wake" type="button">👂 Activer l'appel « Jarvis »</button>
+
+  <div id="log" aria-live="polite"></div>
+
+  <form id="controls" autocomplete="off">
+    <input id="input" type="text" placeholder="Parle ou écris à Jarvis…" enterkeyhint="send">
+    <button class="btn" id="send" type="submit" aria-label="Envoyer">➤</button>
+    <button class="btn" id="mic" type="button" aria-label="Parler">🎙</button>
+  </form>
+</div>
+
+<script>
+const CONFIG = {
+  API_URL: "/api/chat",
+  LANG: "fr-FR",
+  USE_MIC_ANALYSER: false,
+  BARS: 36
+};
+
+const $ = (s) => document.querySelector(s);
+const ui = {
+  status: $("#status"), log: $("#log"), input: $("#input"), form: $("#controls"),
+  mic: $("#mic"), sound: $("#sound"), mouth: $("#mouth"), canvas: $("#wave"), wake: $("#wake")
+};
+const STATUS_LABEL = { idle: "EN VEILLE", listening: "À L'ÉCOUTE", thinking: "ANALYSE…", speaking: "RÉPONSE" };
+const app = { mode: "idle", level: 0, voiceOn: true, analyser: null, freq: null, history: [] };
+const wake = { on: false, paused: false, armed: false, rec: null, armTimer: null };
+
+function setMode(mode) {
+  app.mode = mode;
+  document.body.dataset.mode = mode;
+  ui.status.textContent = (mode === "idle" && wake.on) ? "DIS « JARVIS »" : STATUS_LABEL[mode];
+}
+
+function addLog(text, who) {
+  const p = document.createElement("p");
+  p.className = who;
+  p.textContent = text;
+  ui.log.appendChild(p);
+  while (ui.log.children.length > 30) ui.log.firstChild.remove();
+  ui.log.scrollTop = ui.log.scrollHeight;
+}
+
+/* Égaliseur + bouche */
+const ctx = ui.canvas.getContext("2d");
+let W = 0, H = 0;
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  W = ui.canvas.clientWidth; H = ui.canvas<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Jarvis-Eudson</title>
+<style>
+  :root {
+    --neon: #39FF14;
+    --neon-dim: rgba(57, 255, 20, 0.35);
+    --neon-faint: rgba(57, 255, 20, 0.12);
+    --bg: #000;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--neon);
+    font-family: "Courier New", ui-monospace, monospace; overflow: hidden; }
+  #app { height: 100dvh; display: flex; flex-direction: column; align-items: center;
+    padding: max(12px, env(safe-area-inset-top)) 14px max(12px, env(safe-area-inset-bottom)); gap: 10px; }
+
+  header { width: 100%; display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; letter-spacing: 3px; text-shadow: 0 0 8px var(--neon); }
+  #status { opacity: .8; }
+  #sound { background: none; border: 1px solid var(--neon-dim); color: var(--neon);
+    border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 12px; }
+
+  /* Visage */
+  #face-wrap { position: relative; flex: 0 1 38%; min-height: 150px; aspect-ratio: 5/6;
+    animation: float 5s ease-in-out infinite; }
+  #face { width: 100%; height: 100%; filter: drop-shadow(0 0 6px var(--neon)) drop-shadow(0 0 18px var(--neon-dim)); }
+  #face-wrap::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(57,255,20,.07) 3px 4px);
+    mask-image: radial-gradient(ellipse at center, #000 55%, transparent 80%); }
+  #scan { position: absolute; left: 8%; right: 8%; height: 2px; background: var(--neon);
+    box-shadow: 0 0 12px var(--neon); opacity: .5; animation: scan 3.2s linear infinite; }
+  @keyframes scan { 0% { top: 6%; } 100% { top: 94%; } }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+  .eye { transform-box: fill-box; transform-origin: center; animation: blink 5s infinite; }
+  @keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+  body[data-mode="thinking"] #face .ring { animation: spin 2s linear infinite; }
+  .ring { transform-origin: 100px 120px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Égaliseur */
+  #wave { width: 100%; height: 70px; flex: none; }
+
+  /* Journal */
+  #log { flex: 1 1 auto; width: 100%; min-height: 0; overflow-y: auto; font-size: 13px; line-height: 1.45;
+    border: 1px solid var(--neon-faint); border-radius: 10px; padding: 8px 10px; }
+  #log p { margin-bottom: 6px; }
+  #log .me { opacity: .6; }
+  #log .me::before { content: "> "; }
+  #log .ai::before { content: "◆ "; text-shadow: 0 0 6px var(--neon); }
+
+  /* Contrôles */
+  #controls { width: 100%; display: flex; gap: 8px; align-items: center; }
+  #input { flex: 1; min-width: 0; background: transparent; border: 1px solid var(--neon-dim); color: var(--neon);
+    border-radius: 24px; padding: 12px 16px; font: inherit; font-size: 16px; outline: none; }
+  #input:focus { border-color: var(--neon); box-shadow: 0 0 10px var(--neon-dim); }
+  #input::placeholder { color: var(--neon-dim); }
+  .btn { flex: none; width: 48px; height: 48px; border-radius: 50%; background: transparent; color: var(--neon);
+    border: 1px solid var(--neon); font-size: 20px; display: grid; place-items: center; cursor: pointer; }
+  .btn:active { background: var(--neon-faint); }
+  #mic { width: 56px; height: 56px; box-shadow: 0 0 10px var(--neon-dim); }
+  body[data-mode="listening"] #mic { background: var(--neon); color: #000; animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 24px var(--neon); } }
+
+  /* Mot d'appel « Jarvis » */
+  #wake { width: 100%; flex: none; background: transparent; color: var(--neon); border: 1px dashed var(--neon-dim);
+    border-radius: 10px; padding: 9px 10px; font: inherit; font-size: 12px; letter-spacing: 1px; cursor: pointer; }
+  #wake:active { background: var(--neon-faint); }
+  #wake.on { border-style: solid; border-color: var(--neon); box-shadow: 0 0 12px var(--neon-dim);
+    text-shadow: 0 0 6px var(--neon); animation: pulse 2.4s infinite; }
+</style>
+</head>
+<body data-mode="idle">
+<div id="app">
+  <header>
+    <span>JARVIS-EUDSON</span>
+    <span id="status">EN VEILLE</span>
+    <button id="sound" type="button" aria-label="Activer/couper la voix">🔊</button>
+  </header>
+
+  <div id="face-wrap">
+    <svg id="face" viewBox="0 0 200 240" fill="none" stroke="#39FF14" stroke-width="1.4" stroke-linecap="round">
+      <!-- anneau extérieur -->
+      <g class="ring" opacity=".5">
+        <circle cx="100" cy="120" r="108" stroke-dasharray="4 10"/>
+      </g>
+      <!-- contour du crâne -->
+      <path d="M100 18 C58 18 42 52 42 92 C42 118 48 138 60 158 C70 174 80 196 100 220
+               C120 196 130 174 140 158 C152 138 158 118 158 92 C158 52 142 18 100 18 Z"/>
+      <!-- lignes de grille holographique -->
+      <g opacity=".35">
+        <path d="M52 66 Q100 52 148 66"/>
+        <path d="M44 92 Q100 78 156 92"/>
+        <path d="M46 118 Q100 106 154 118"/>
+        <path d="M56 144 Q100 134 144 144"/>
+        <path d="M72 172 Q100 164 128 172"/>
+        <path d="M100 18 V220"/>
+        <path d="M72 24 Q64 120 82 208"/>
+        <path d="M128 24 Q136 120 118 208"/>
+      </g>
+      <!-- yeux -->
+      <g class="eye"><ellipse cx="76" cy="98" rx="14" ry="6" fill="rgba(57,255,20,.25)"/>
+        <circle cx="76" cy="98" r="2.5" fill="#39FF14"/></g>
+      <g class="eye"><ellipse cx="124" cy="98" rx="14" ry="6" fill="rgba(57,255,20,.25)"/>
+        <circle cx="124" cy="98" r="2.5" fill="#39FF14"/></g>
+      <!-- nez -->
+      <path d="M100 108 L94 140 L106 140" opacity=".7"/>
+      <!-- bouche (réagit au niveau sonore) -->
+      <ellipse id="mouth" cx="100" cy="170" rx="18" ry="1.5" fill="rgba(57,255,20,.3)"/>
+    </svg>
+    <div id="scan"></div>
+  </div>
+
+  <canvas id="wave"></canvas>
+
+  <button id="wake" type="button">👂 Activer l'appel « Jarvis »</button>
+
+  <div id="log" aria-live="polite"></div>
+
+  <form id="controls" autocomplete="off">
+    <input id="input" type="text" placeholder="Parle ou écris à Jarvis…" enterkeyhint="send">
+    <button class="btn" id="send" type="submit" aria-label="Envoyer">➤</button>
+    <button class="btn" id="mic" type="button" aria-label="Parler">🎙</button>
+  </form>
+</div>
+
+<script>
+const CONFIG = {
+  API_URL: "/api/chat",
+  LANG: "fr-FR",
+  USE_MIC_ANALYSER: false,
+  BARS: 36
+};
+
+const $ = (s) => document.querySelector(s);
+const ui = {
+  status: $("#status"), log: $("#log"), input: $("#input"), form: $("#controls"),
+  mic: $("#mic"), sound: $("#sound"), mouth: $("#mouth"), canvas: $("#wave"), wake: $("#wake")
+};
+const STATUS_LABEL = { idle: "EN VEILLE", listening: "À L'ÉCOUTE", thinking: "ANALYSE…", speaking: "RÉPONSE" };
+const app = { mode: "idle", level: 0, voiceOn: true, analyser: null, freq: null, history: [] };
+const wake = { on: false, paused: false, armed: false, rec: null, armTimer: null };
+
+function setMode(mode) {
+  app.mode = mode;
+  document.body.dataset.mode = mode;
+  ui.status.textContent = (mode === "idle" && wake.on) ? "DIS « JARVIS »" : STATUS_LABEL[mode];
+}
+
+function addLog(text, who) {
+  const p = document.createElement("p");
+  p.className = who;
+  p.textContent = text;
+  ui.log.appendChild(p);
+  while (ui.log.children.length > 30) ui.log.firstChild.remove();
+  ui.log.scrollTop = ui.log.scrollHeight;
+}
+
+/* Égaliseur + bouche */
+const ctx = ui.canvas.getContext("2d");
+let W = 0, H = 0;
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  W = ui.canvas.clientWidth; H = ui.canvas.clientHeight;
+  ui.canvas.width = W * dpr; ui.canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+function targetLevel(t) {
+  switch (app.mode) {
+    case "listening": return 0.25 + Math.random() * 0.3;
+    case "speaking":  return 0.3 + Math.random() * 0.6;
+    case "thinking":  return 0.15 + 0.1 * Math.sin(t / 150);
+    default:          return 0.07 + 0.03 * Math.sin(t / 600);
+  }
+}
+
+function draw(t) {
+  let target = targetLevel(t);
+  if (app.analyser && app.mode === "listening") {
+    app.analyser.getByteFrequencyData(app.freq);
+    target = app.freq.reduce((a, b) => a + b, 0) / app.freq.length / 160;
+  }
+  app.level += (Math.min(target, 1) - app.level) * 0.2;
+
+  ctx.clearRect(0, 0, W, H);
+  const n = CONFIG.BARS, gap = 3, bw = (W - gap * (n - 1)) / n, mid = H / 2;
+  ctx.fillStyle = "#39FF14";
+  ctx.shadowColor = "#39FF14";
+  ctx.shadowBlur = 8;
+  for (let i = 0; i < n; i++) {
+    const wobble = Math.abs(Math.sin(t / 260 + i * 0.55) * Math.cos(t / 410 + i * 0.31));
+    const edge = 1 - Math.abs(i - n / 2) / (n / 2) * 0.55;
+    const h = 3 + app.level * wobble * edge * (H - 6);
+    ctx.fillRect(i * (bw + gap), mid - h / 2, bw, h);
+  }
+
+  ui.mouth.setAttribute("ry", (1.5 + app.level * 11).toFixed(2));
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+/* Voix : synthèse */
+function pickVoice() {
+  const voices = speechSynthesis.getVoices();
+  return voices.find(v => v.lang === CONFIG.LANG) || voices.find(v => v.lang.startsWith("fr")) || null;
+}
+if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = pickVoice;
+
+function speak(text) {
+  if (!app.voiceOn || !("speechSynthesis" in window)) {
+    setMode("speaking");
+    setTimeout(() => setMode("idle"), Math.min(4000, 400 + text.length * 40));
+    return;
+  }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = CONFIG.LANG;
+  const v = pickVoice(); if (v) u.voice = v;
+  u.rate = 1.02; u.pitch = 0.9;
+  u.onstart = () => { pauseWake(); setMode("speaking"); };
+  u.onend = u.onerror = () => { setMode("idle"); resumeWake(); };
+  speechSynthesis.speak(u);
+}
+
+ui.sound.addEventListener("click", () => {
+  app.voiceOn = !app.voiceOn;
+  ui.sound.textContent = app.voiceOn ? "🔊" : "🔇";
+  if (!app.voiceOn) { speechSynthesis.cancel(); setMode("idle"); }
+});
+
+/* Voix : reconnaissance */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null;
+
+async function startMicAnalyser() {
+  if (!CONFIG.USE_MIC_ANALYSER || app.analyser) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ac.createMediaStreamSource(stream);
+    app.analyser = ac.createAnalyser();
+    app.analyser.fftSize = 128;
+    app.freq = new Uint8Array(app.analyser.frequencyBinCount);
+    src.connect(app.analyser);
+  } catch (e) { console.warn("Analyseur micro indisponible :", e); }
+}
+
+function toggleListening() {
+  if (!SR) { addLog("Reconnaissance vocale non supportée ici (essaie Chrome). Utilise le clavier.", "ai"); return; }
+  if (app.mode === "listening" && recog) { recog.stop(); return; }
+  speechSynthesis.cancel();
+  recog = new SR();
+  recog.lang = CONFIG.LANG;
+  recog.interimResults = false;
+  recog.maxAlternatives = 1;
+  pauseWake();
+  recog.onstart = () => { setMode("listening"); startMicAnalyser(); };
+  recog.onresult = (e) => send(e.results[0][0].transcript);
+  recog.onerror = (e) => {
+    setMode("idle");
+    if (e.error === "not-allowed") addLog("Accès micro refusé. Autorise-le dans les réglages du navigateur.", "ai");
+  };
+  recog.onend = () => { if (app.mode === "listening") setMode("idle"); resumeWake(); };
+  recog.start();
+}
+ui.mic.addEventListener("click", toggleListening);
+
+/* Mot d'appel « Jarvis » */
+const WAKE_RE = /\b(jarvis|jarvice|jarvi|djarvis|jarvys)\b/i;
+
+function greeting() {
+  const h = new Date().getHours();
+  const hello = (h >= 18 || h < 5) ? "Bonsoir" : "Bonjour";
+  return hello + " Eudson, je suis Jarvis. Je t'écoute.";
+}
+
+function wakeGreet() {
+  wake.armed = true;
+  clearTimeout(wake.armTimer);
+  wake.armTimer = setTimeout(() => { wake.armed = false; }, 20000);
+  const g = greeting();
+  addLog(g, "ai");
+  speak(g);
+}
+
+function handleHeard(text) {
+  const m = text.match(WAKE_RE);
+  if (m) {
+    const after = text.slice(m.index + m[0].length).replace(/^[\s,.:;!?-]+/, "").trim();
+    if (after.length > 2) { wake.armed = false; send(after); } else { wakeGreet(); }
+    return;
+  }
+  if (wake.armed) { wake.armed = false; clearTimeout(wake.armTimer); send(text); }
+}
+
+function runWake() {
+  if (!wake.on || wake.paused || wake.rec) return;
+  const r = new SR();
+  r.lang = CONFIG.LANG;
+  r.continuous = true;
+  r.interimResults = false;
+  r.onresult = (e) => {
+    const res = e.results[e.results.length - 1];
+    if (res.isFinal) handleHeard(res[0].transcript);
+  };
+  r.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      stopWake();
+      addLog("Accès micro refusé. Autorise-le dans les réglages du navigateur.", "ai");
+    }
+  };
+  r.onend = () => {
+    wake.rec = null;
+    if (wake.on && !wake.paused) setTimeout(runWake, 300);
+  };
+  wake.rec = r;
+  try { r.start(); } catch (err) { wake.rec = null; }
+}
+
+function pauseWake() {
+  wake.paused = true;
+  if (wake.rec) { try { wake.rec.abort(); } catch (err) {} }
+}
+
+function resumeWake() {
+  wake.paused = false;
+  if (wake.on) setTimeout(runWake, 400);
+}
+
+function startWake() {
+  if (!SR) { addLog("Écoute vocale non supportée ici (essaie Chrome sur Android). Utilise le clavier.", "ai"); return; }
+  wake.on = true; wake.paused = false;
+  ui.wake.classList.add("on");
+  ui.wake.textContent = "👂 JARVIS ACTIVÉ · touche pour couper";
+  if (app.mode === "idle") setMode("idle");
+  runWake();
+}
+
+function stopWake() {
+  wake.on = false; wake.armed = false;
+  clearTimeout(wake.armTimer);
+  if (wake.rec) { try { wake.rec.abort(); } catch (err) {} }
+  ui.wake.classList.remove("on");
+  ui.wake.textContent = "👂 Activer l'appel « Jarvis »";
+  if (app.mode === "idle") setMode("idle");
+}
+
+ui.wake.addEventListener("click", () => (wake.on ? stopWake() : startWake()));
+
+/* Cerveau */
+async function getReply(text) {
+  try {
+    const res = await fetch(CONFIG.API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, history: app.history.slice(-10) })
+    });
+    const data = await res.json().catch(() => ({}));
+    const reply = data.reply || ("Erreur du serveur (" + res.status + ").");
+    if (res.ok) app.history.push({ role: "user", content: text }, { role: "assistant", content: reply });
+    return reply;
+  } catch (err) {
+    console.error(err);
+    return "Connexion au serveur impossible. Réessaie dans un instant.";
+  }
+}
+
+async function send(text) {
+  text = (text || "").trim();
+  if (!text) return;
+  addLog(text, "me");
+  setMode("thinking");
+  const reply = await getReply(text);
+  addLog(reply, "ai");
+  speak(reply);
+}
+
+ui.form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = ui.input.value;
+  ui.input.value = "";
+  send(v);
+});
+
+addLog("Système initialisé. Touche « Activer l'appel Jarvis », puis dis « Jarvis ». Ou touche 🎙 / écris ta commande.", "ai");
+</script>
+</body>
+</html>.clientHeight;
+  ui.canvas.width = W * dpr; ui.canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+function targetLevel(t) {
+  switch (app.mode) {
+se "listening": return 0.25 + Math.random() * 0.3;
+    case "speaking":  return 0.3 + Math.random() * 0.6;
+    case "thinking":  return 0.15 + 0.1 * Math.sin(t / 150);
+    default:          return 0.07 + 0.03 * Math.sin(t / 600);
+  }
+}
+
+function draw(t) {
+  let target = targetLevel(t);
+  if (app.analyser && app.mode === "listening") {
+    app.analyser.getByteFrequencyData(app.freq);
+    target = app.freq.reduce((a, b) => a + b, 0) / app.freq.length / 160;
+  }
+  app.level += (Math.min(target, 1) - app.level) * 0.2;
+
+  ctx.clearRect(0, 0, W, H);
+  const n = CONFIG.BARS, gap = 3, bw = (W - gap * (n - 1)) / n, mid = H / 2;
+  ctx.fillStyle = "#39FF14";
+  ctx.shadowColor = "#39FF14";
+  ctx.shadowBlur = 8;
+  for (let i = 0; i < n; i++) {
+    const wobble = Math.abs(Math.sin(t / 260 + i * 0.55) * Math.cos(t / 410 + i * 0.31));
+    const edge = 1 - Math.abs(i - n / 2) / (n / 2) * 0.55;
+    const h = 3 + app.level * wobble * edge * (H - 6);
+    ctx.fillRect(i * (bw + gap), mid - h / 2, bw, h);
+  }
+
+  ui.mouth.setAttribute("ry", (1.5 + app.level * 11).toFixed(2));
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+/* Voix : synthèse */
+function pickVoice() {
+  const voices = speechSynthesis.getVoices();
+  return voices.find(v => v.lang === CONFIG.LANG) || voices.find(v => v.lang.startsWith("fr")) || null;
+}
+if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = pickVoice;
+
+function speak(text) {
+  if (!app.voiceOn || !("speechSynthesis" in window)) {
+    setMode("speaking");
+    setTimeout(() => setMode("idle"), Math.min(4000, 400 + text.length * 40));
+    return;
+  }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = CONFIG.LANG;
+  const v = pickVoice(); if (v) u.voice = v;
+  u.rate = 1.02; u.pitch = 0.9;
+  u.onstart = () => { pauseWake(); setMode("speaking"); };
+  u.onend = u.onerror = () => { setMode("idle"); resumeWake(); };
+  speechSynthesis.speak(u);
+}
+
+ui.sound.addEventListener("click", () => {
+  app.voiceOn = !app.voiceOn;
+  ui.sound.textContent = app.voiceOn ? "🔊" : "🔇";
+  if (!app.voiceOn) { speechSynthesis.cancel(); setMode("idle"); }
+});
+
+/* Voix : reconnaissance */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null;
+
+async function startMicAnalyser() {
+  if (!CONFIG.USE_MIC_ANALYSER || app.analyser) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ac.createMediaStreamSource(stream);
+    app.analyser = ac.createAnalyser();
+    app.analyser.fftSize = 128;
+    app.freq = new Uint8Array(app.analyser.frequencyBinCount);
+    src.connect(app.analyser);
+  } catch (e) { console.warn("Analyseur micro indisponible :", e); }
+}
+
+function toggleListening() {
+  if (!SR) { addLog("Reconnaissance vocale non supportée ici (essaie Chrome). Utilise le clavier.", "ai"); return; }
+  if (app.mode === "listening" && recog) { recog.stop(); return; }
+  speechSynthesis.cancel();
+  recog = new SR();
+  recog.lang = CONFIG.LANG;
+  recog.interimResults = false;
+  recog.maxAlternatives = 1;
+  pauseWake();
+  recog.onstart = () => { setMode("listening"); startMicAnalyser(); };
+  recog.onresult = (e) => send(e.results[0][0].transcript);
+  recog.onerror = (e) => {
+    setMode("idle");
+    if (e.error === "not-allowed") addLog("Accès micro refusé. Autorise-le dans les réglages du navigateur.", "ai");
+  };
+  recog.onend = () => { if (app.mode === "listening") setMode("idle"); resumeWake(); };
+  recog.start();
+}
+ui.mic.addEventListener("click", toggleListening);
+
+/* Mot d'appel « Jarvis » */
+const WAKE_RE = /\b(jarvis|jarvice|jarvi|djarvis|jarvys)\b/i;
+
+function greeting() {
+  const h = new Date().getHours();
+  const hello = (h >= 18 || h < 5) ? "Bonsoir" : "Bonjour";
+  return hello + " Eudson, je suis Jarvis. Je t'écoute.";
+}
+
+function wakeGreet() {
+  wake.armed = true;
