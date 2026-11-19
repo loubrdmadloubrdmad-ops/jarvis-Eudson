@@ -15,7 +15,7 @@ export default {
     if (url.pathname !== "/api/chat" || request.method !== "POST") {
       return new Response("Not found", { status: 404 });
     }
-    if (!env.ANTHROPIC_API_KEY) return json(500, { reply: "Clé API non configurée." });
+    if (!env.GEMINI_API_KEY) return json(500, { reply: "Clé API non configurée." });
 
     let body;
     try { body = await request.json(); }
@@ -24,32 +24,40 @@ export default {
     const message = String(body.message || "").trim().slice(0, 1000);
     if (!message) return json(400, { reply: "Message vide." });
 
-    const messages = [];
+    const contents = [];
     for (const h of Array.isArray(body.history) ? body.history.slice(-10) : []) {
       if (h && (h.role === "user" || h.role === "assistant") && typeof h.content === "string") {
-        messages.push({ role: h.role, content: h.content.slice(0, 1000) });
+        contents.push({
+          role: h.role === "assistant" ? "model" : "user",
+          parts: [{ text: h.content.slice(0, 1000) }]
+        });
       }
     }
-    messages.push({ role: "user", content: message });
+    contents.push({ role: "user", parts: [{ text: message }] });
+
+    const model = env.GEMINI_MODEL || "gemini-flash-latest";
 
     try {
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-5-5",
-          max_tokens: 300,
-          system: SYSTEM,
-          messages
-        })
-      });
+      const r = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
+        {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": env.GEMINI_API_KEY,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM }] },
+            contents,
+            generationConfig: { maxOutputTokens: 800 }
+          })
+        }
+      );
       if (!r.ok) return json(502, { reply: "Le cerveau de Jarvis ne répond pas." });
       const data = await r.json();
-      const reply = (data.content || []).map((b) => b.text || "").join("").trim();
+      const parts = (data.candidates && data.candidates[0] && data.candidates[0].content
+        && data.candidates[0].content.parts) || [];
+      const reply = parts.map((p) => p.text || "").join("").trim();
       return json(200, { reply: reply || "Je n'ai pas de réponse." });
     } catch (e) {
       return json(500, { reply: "Erreur interne du serveur." });
