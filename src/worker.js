@@ -31,8 +31,10 @@ export default {
     try { body = await request.json(); }
     catch { return json(400, { reply: "Requête invalide." }); }
 
-    const message = String(body.message || "").trim().slice(0, 1000);
-    if (!message) return json(400, { reply: "Message vide." });
+    const message = String(body.message || "").trim().slice(0, 1000) || (body.image ? "Regarde cette photo et dis-moi ce que tu vois." : "");
+    const image = typeof body.image === "string" && body.image.length < 2500000 ? body.image : "";
+    const mime = body.mime === "image/png" ? "image/png" : "image/jpeg";
+    if (!message && !image) return json(400, { reply: "Message vide." });
 
     const contents = [];
     for (const h of Array.isArray(body.history) ? body.history.slice(-10) : []) {
@@ -43,7 +45,10 @@ export default {
         });
       }
     }
-    contents.push({ role: "user", parts: [{ text: message }] });
+    const parts = [];
+    if (image) parts.push({ inline_data: { mime_type: mime, data: image } });
+    parts.push({ text: message });
+    contents.push({ role: "user", parts });
 
     // Plusieurs modèles : si l'un est surchargé (503), on essaie le suivant.
     const models = [
@@ -76,9 +81,9 @@ export default {
           );
           if (r.ok) {
             const data = await r.json();
-            const parts = (data.candidates && data.candidates[0] && data.candidates[0].content
+            const outParts = (data.candidates && data.candidates[0] && data.candidates[0].content
               && data.candidates[0].content.parts) || [];
-            const reply = parts.map((p) => p.text || "").join("").trim();
+            const reply = outParts.map((p) => p.text || "").join("").trim();
             return json(200, { reply: reply || "Je n'ai pas de réponse." });
           }
           lastStatus = r.status;
