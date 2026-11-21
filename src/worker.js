@@ -53,7 +53,10 @@ export default {
           })
         }
       );
-      if (!r.ok) return json(502, { reply: "Le cerveau de Jarvis ne répond pas." });
+      if (!r.ok) {
+        const detail = (await r.text()).slice(0, 300);
+        return json(502, { reply: "Gemini erreur " + r.status + " : " + detail });
+      }
       const data = await r.json();
       const parts = (data.candidates && data.candidates[0] && data.candidates[0].content
         && data.candidates[0].content.parts) || [];
