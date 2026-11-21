@@ -11,13 +11,19 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
   font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#e8ebf0}
 #stage{position:fixed;inset:0;display:flex;justify-content:center;background:#000}
 #art{position:relative;height:100dvh;aspect-ratio:688/1376;overflow:hidden;flex:none}
-#art img{position:absolute;left:0;top:-10.9%;width:100%;height:auto;display:block;
+#bg{position:absolute;left:0;top:-10.9%;width:100%;height:auto;display:block;
   transition:opacity .5s,filter .5s}
-.chat #art img{opacity:.22;filter:blur(3px)}
-#bar{position:absolute;left:4.6%;width:90.8%;top:88%;height:8.6%;background:#020203;
+.chat #bg{opacity:0}
+#bar{position:absolute;left:4.6%;width:90.8%;bottom:3.4%;min-height:8.6%;background:#020203;
   border:1px solid rgba(255,255,255,.55);border-radius:999px;display:flex;align-items:center;gap:6px;
-  padding:0 8px 0 10px;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 0 18px rgba(220,228,240,.35),inset 0 0 14px rgba(255,255,255,.05)}
-#inp{flex:1;min-width:0;height:100%;background:none;border:0;outline:0;color:#fff;font-size:16px;padding:0 6px;font-family:inherit}
+  padding:8px 8px 8px 10px;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 0 18px rgba(220,228,240,.35),inset 0 0 14px rgba(255,255,255,.05)}
+#bar.has{flex-wrap:wrap;border-radius:30px;padding:12px 12px 10px;row-gap:4px}
+#bar.has #prev{order:0}
+#bar.has #inp{order:1;flex:1 0 100%;height:48px;padding:0 6px}
+#bar.has #plus{order:2;margin-right:auto}
+#bar.has #mic{order:3}
+#bar.has #send{order:4}
+#inp{flex:1;min-width:0;height:44px;background:none;border:0;outline:0;color:#fff;font-size:16px;padding:0 6px;font-family:inherit}
 #inp::placeholder{color:#8e939c}
 .ib{flex:none;width:44px;height:44px;border-radius:50%;border:0;background:transparent;color:#d9dde4;
   display:grid;place-items:center;cursor:pointer;padding:0}
@@ -25,6 +31,19 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
 #send{background:#d9dde4;color:#000}
 #mic.on{background:rgba(255,255,255,.22);animation:p 1.1s infinite}
 @keyframes p{50%{box-shadow:0 0 0 8px rgba(255,255,255,.18)}}
+#prev{display:none;width:100%;gap:8px;padding:2px 2px 6px}
+#prev.on{display:flex}
+.thumb{position:relative;width:72px;height:72px;flex:none}
+.thumb img{display:block;width:72px;height:72px;object-fit:cover;border-radius:18px;cursor:pointer}
+.thumb button{position:absolute;top:5px;right:5px;width:24px;height:24px;border-radius:50%;border:0;
+  background:rgba(255,255,255,.92);color:#000;font-size:15px;line-height:1;cursor:pointer;padding:0}
+.m.ph{background:none;border:0;padding:0;border-radius:0;backdrop-filter:none}
+.m.ph img{width:190px;height:190px;max-width:none;max-height:none;object-fit:cover;border-radius:28px;margin:0;cursor:pointer}
+#zoom{display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.96);align-items:center;justify-content:center}
+#zoom.on{display:flex}
+#zoom img{max-width:100%;max-height:100%;object-fit:contain}
+#zoom button{position:absolute;top:calc(env(safe-area-inset-top) + 14px);right:14px;width:44px;height:44px;border-radius:50%;
+  border:0;background:rgba(255,255,255,.16);color:#fff;font-size:26px;line-height:1;cursor:pointer}
 #msgs{display:none;position:absolute;left:0;right:0;top:0;bottom:12%;overflow-y:auto;
   padding:calc(env(safe-area-inset-top) + 18px) 14px 12px;flex-direction:column;gap:10px;
   -webkit-overflow-scrolling:touch}
@@ -43,9 +62,11 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
 <body>
 <div id="stage">
   <div id="art">
-    <img src="1795271096456.png" alt="">
+    <img id="bg" src="1795271096456.png" alt="">
     <div id="msgs"></div>
+    <input id="file" type="file" accept="image/*" hidden>
     <div id="bar">
+      <div id="prev"><div class="thumb"><img id="pimg" alt="Photo"><button id="pdel" type="button" aria-label="Retirer la photo">&times;</button></div></div>
       <button class="ib" id="plus" type="button" aria-label="Ajouter"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
       <input id="inp" type="text" placeholder="Parle à Jarvis" autocomplete="off" enterkeyhint="send">
       <button class="ib" id="mic" type="button" aria-label="Micro"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
@@ -53,6 +74,7 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
     </div>
   </div>
 </div>
+<div id="zoom"><img id="zimg" alt=""><button id="zclose" type="button" aria-label="Fermer">&times;</button></div>
 
 <script>
 const CONFIG = { API_URL: "/api/chat", LANG: "fr-FR" };
@@ -60,19 +82,33 @@ const $ = (id) => document.getElementById(id);
 const stage = $("stage"), msgs = $("msgs"), inp = $("inp"), mic = $("mic");
 let history = [], busy = false;
 
-function add(text, who){
+function add(text, who, img){
   stage.classList.add("chat");
-  const d = document.createElement("div");
-  d.className = "m " + who;
-  d.textContent = text;
-  msgs.appendChild(d);
+  if (img) {
+    const p = document.createElement("div");
+    p.className = "m u ph";
+    const i = document.createElement("img");
+    i.src = img; i.className = "zoomable"; i.alt = "Photo";
+    p.appendChild(i);
+    msgs.appendChild(p);
+  }
+  if (text) {
+    const d = document.createElement("div");
+    d.className = "m " + who;
+    d.textContent = text;
+    msgs.appendChild(d);
+  }
   msgs.scrollTop = msgs.scrollHeight;
 }
 
 async function ask(text){
-  if (busy || !text) return;
+  const photo = pending;
+  if (busy || (!text && !photo)) return;
   busy = true;
-  add(text, "u");
+  let shown = text;
+  if (!text && photo) { text = "Regarde cette photo et dis-moi ce que tu vois."; shown = ""; }
+  add(shown, "u", photo ? photo.url : null);
+  clearPhoto();
   const wait = document.createElement("div");
   wait.className = "m j dots";
   wait.innerHTML = "<i></i><i></i><i></i>";
@@ -83,7 +119,7 @@ async function ask(text){
     const r = await fetch(CONFIG.API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, history })
+      body: JSON.stringify({ message: text, history, image: photo ? photo.data : undefined, mime: photo ? "image/jpeg" : undefined })
     });
     let data = {};
     try { data = await r.json(); } catch (e) {}
@@ -98,13 +134,52 @@ async function ask(text){
   busy = false;
 }
 
+let pending = null;
+function clearPhoto(){
+  pending = null;
+  $("prev").classList.remove("on");
+  $("bar").classList.remove("has");
+  $("pimg").removeAttribute("src");
+  $("file").value = "";
+}
+function loadPhoto(file){
+  if (!file || !file.type.startsWith("image/")) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      const max = 1024, k = Math.min(1, max / Math.max(im.width, im.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      const url = c.toDataURL("image/jpeg", 0.82);
+      pending = { url, data: url.split(",")[1] };
+      $("pimg").src = url;
+      $("prev").classList.add("on");
+      $("bar").classList.add("has");
+    };
+    im.onerror = () => add("Je n'arrive pas à lire cette photo. Essaie-en une autre.", "j");
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(file);
+}
+$("file").addEventListener("change", (e) => loadPhoto(e.target.files[0]));
+$("pdel").addEventListener("click", clearPhoto);
+
+// Toucher une photo : l'ouvrir en grand
+function openZoom(src){ $("zimg").src = src; $("zoom").classList.add("on"); }
+function closeZoom(){ $("zoom").classList.remove("on"); $("zimg").removeAttribute("src"); }
+$("pimg").addEventListener("click", () => { if (pending) openZoom(pending.url); });
+msgs.addEventListener("click", (e) => { if (e.target.classList.contains("zoomable")) openZoom(e.target.src); });
+$("zoom").addEventListener("click", closeZoom);
+
 function envoyer(){
   const t = inp.value.trim();
   inp.value = "";
   ask(t);
 }
 $("send").addEventListener("click", envoyer);
-$("plus").addEventListener("click", () => add("Ajouter une photo ou un fichier : bientôt disponible.", "j"));
+$("plus").addEventListener("click", () => $("file").click());
 inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); envoyer(); } });
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
