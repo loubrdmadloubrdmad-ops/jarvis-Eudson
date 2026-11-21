@@ -14,14 +14,16 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
 #art img{position:absolute;left:0;top:-10.9%;width:100%;height:auto;display:block;
   transition:opacity .5s,filter .5s}
 .chat #art img{opacity:.22;filter:blur(3px)}
-#inp{position:absolute;left:18.6%;top:89.8%;width:50.5%;height:5.3%;
-  background:#020202;border:0;outline:0;color:#fff;font-size:16px;padding:0 4px}
+#bar{position:absolute;left:4.6%;width:90.8%;top:88%;height:8.6%;background:#020203;
+  border:1px solid rgba(255,255,255,.55);border-radius:999px;display:flex;align-items:center;gap:6px;
+  padding:0 8px 0 10px;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 0 18px rgba(220,228,240,.35),inset 0 0 14px rgba(255,255,255,.05)}
+#inp{flex:1;min-width:0;height:100%;background:none;border:0;outline:0;color:#fff;font-size:16px;padding:0 6px;font-family:inherit}
 #inp::placeholder{color:#8e939c}
-.hot{position:absolute;width:12%;aspect-ratio:1;transform:translate(-50%,-50%);
-  background:transparent;border:0;border-radius:50%;cursor:pointer;padding:0}
-#mic{left:75.9%;top:92.3%}
-#send{left:86.5%;top:92.3%}
-#mic.on{background:rgba(255,255,255,.25);animation:p 1.1s infinite}
+.ib{flex:none;width:44px;height:44px;border-radius:50%;border:0;background:transparent;color:#d9dde4;
+  display:grid;place-items:center;cursor:pointer;padding:0}
+.ib svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+#send{background:#d9dde4;color:#000}
+#mic.on{background:rgba(255,255,255,.22);animation:p 1.1s infinite}
 @keyframes p{50%{box-shadow:0 0 0 8px rgba(255,255,255,.18)}}
 #msgs{display:none;position:absolute;left:0;right:0;top:0;bottom:12%;overflow-y:auto;
   padding:calc(env(safe-area-inset-top) + 18px) 14px 12px;flex-direction:column;gap:10px;
@@ -43,9 +45,12 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
   <div id="art">
     <img src="1795271096456.png" alt="">
     <div id="msgs"></div>
-    <input id="inp" type="text" placeholder="Essayez de parler à Jarvis" autocomplete="off" enterkeyhint="send">
-    <button class="hot" id="mic" aria-label="Micro"></button>
-    <button class="hot" id="send" aria-label="Envoyer"></button>
+    <div id="bar">
+      <button class="ib" id="plus" type="button" aria-label="Ajouter"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      <input id="inp" type="text" placeholder="Parle à Jarvis" autocomplete="off" enterkeyhint="send">
+      <button class="ib" id="mic" type="button" aria-label="Micro"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button class="ib" id="send" type="button" aria-label="Envoyer"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
   </div>
 </div>
 
@@ -99,6 +104,7 @@ function envoyer(){
   ask(t);
 }
 $("send").addEventListener("click", envoyer);
+$("plus").addEventListener("click", () => add("Ajouter une photo ou un fichier : bientôt disponible.", "j"));
 inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); envoyer(); } });
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
