@@ -17,8 +17,6 @@ const json = (status, obj) =>
     headers: { "Content-Type": "application/json; charset=utf-8" }
   });
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -58,44 +56,50 @@ export default {
       "gemini-2.5-flash-lite"
     ];
 
-    const payload = JSON.stringify({
+    const makePayload = (rapide) => JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM }] },
       contents,
-      generationConfig: { maxOutputTokens: 800, temperature: 0.9 }
+      generationConfig: Object.assign(
+        { maxOutputTokens: 400, temperature: 0.9 },
+        // Réflexion coupée = réponse beaucoup plus rapide
+        rapide ? { thinkingConfig: { thinkingBudget: 0 } } : {}
+      )
     });
+
+    const appeler = async (model, rapide) => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 9000);   // pas plus de 9 s par essai
+      try {
+        return await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
+          {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": env.GEMINI_API_KEY,
+              "content-type": "application/json"
+            },
+            body: makePayload(rapide),
+            signal: ctrl.signal
+          }
+        );
+      } finally { clearTimeout(t); }
+    };
 
     let lastStatus = 0;
     for (const model of models) {
-      for (let essai = 0; essai < 2; essai++) {
-        try {
-          const r = await fetch(
-            "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
-            {
-              method: "POST",
-              headers: {
-                "x-goog-api-key": env.GEMINI_API_KEY,
-                "content-type": "application/json"
-              },
-              body: payload
-            }
-          );
-          if (r.ok) {
-            const data = await r.json();
-            const outParts = (data.candidates && data.candidates[0] && data.candidates[0].content
-              && data.candidates[0].content.parts) || [];
-            const reply = outParts.map((p) => p.text || "").join("").trim();
-            return json(200, { reply: reply || "Je n'ai pas de réponse." });
-          }
-          lastStatus = r.status;
-          if (r.status === 503 || r.status === 429 || r.status === 500) {
-            await wait(600);      // surcharge : on réessaie, puis on change de modèle
-            continue;
-          }
-          break;                   // autre erreur (404, 400...) : modèle suivant
-        } catch (e) {
-          lastStatus = -1;
-          break;
+      try {
+        let r = await appeler(model, true);
+        if (r.status === 400) r = await appeler(model, false);   // ce modèle refuse l'option rapide
+        if (r.ok) {
+          const data = await r.json();
+          const outParts = (data.candidates && data.candidates[0] && data.candidates[0].content
+            && data.candidates[0].content.parts) || [];
+          const reply = outParts.map((p) => p.text || "").join("").trim();
+          return json(200, { reply: reply || "Je n'ai pas de réponse." });
         }
+        lastStatus = r.status;       // surcharge ou erreur : on passe tout de suite au modèle suivant
+      } catch (e) {
+        lastStatus = -1;             // trop lent ou réseau : modèle suivant
       }
     }
     return json(502, {
