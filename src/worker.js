@@ -20,6 +20,44 @@ const json = (status, obj) =>
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // ---- Voix : transforme un texte en audio avec ta voix ElevenLabs ----
+    if (url.pathname === "/api/speak" && request.method === "POST") {
+      if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_VOICE_ID) {
+        return json(500, { reply: "Voix non configurée." });
+      }
+      let b;
+      try { b = await request.json(); }
+      catch { return json(400, { reply: "Requête invalide." }); }
+      const text = String(b.text || "").trim().slice(0, 700);
+      if (!text) return json(400, { reply: "Texte vide." });
+      try {
+        const r = await fetch(
+          "https://api.elevenlabs.io/v1/text-to-speech/" + encodeURIComponent(env.ELEVENLABS_VOICE_ID)
+            + "?output_format=mp3_44100_64",
+          {
+            method: "POST",
+            headers: { "xi-api-key": env.ELEVENLABS_API_KEY, "content-type": "application/json" },
+            body: JSON.stringify({
+              text,
+              model_id: env.ELEVENLABS_MODEL || "eleven_flash_v2_5",
+              voice_settings: { stability: 0.45, similarity_boost: 0.8 }
+            })
+          }
+        );
+        if (!r.ok) {
+          const detail = (await r.text()).slice(0, 200);
+          return json(502, { reply: "ElevenLabs " + r.status + " : " + detail });
+        }
+        return new Response(r.body, {
+          status: 200,
+          headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" }
+        });
+      } catch (e) {
+        return json(502, { reply: "ElevenLabs injoignable." });
+      }
+    }
+
     if (url.pathname !== "/api/chat" || request.method !== "POST") {
       return new Response("Not found", { status: 404 });
     }
