@@ -1,3 +1,10 @@
+// Correctif d'affichage : les cartes de code ne doivent jamais s'écraser quand la discussion est longue
+(function () {
+  var f = document.createElement("style");
+  f.textContent = ".code{flex:none !important}.m{flex:none}";
+  document.head.appendChild(f);
+})();
+
 // Bandeau "Installer Jarvis" : apparaît tout seul à l'ouverture du site
 (function () {
   var standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
