@@ -97,12 +97,15 @@ export default {
     parts.push({ text: message });
     contents.push({ role: "user", parts });
 
-    // Plusieurs modèles : si l'un est surchargé (503), on essaie le suivant.
+    // Plusieurs modèles : si l'un est surchargé (503) ou absent (404), on essaie le suivant.
+    // (les anciens modèles 2.5 sont en fin de liste : Google les réserve aux anciens utilisateurs)
     const models = [
       env.GEMINI_MODEL || "gemini-flash-latest",
-      "gemini-2.5-flash",
+      "gemini-3.8-flash",
+      "gemini-3.6-flash",
       "gemini-flash-lite-latest",
-      "gemini-2.5-flash-lite"
+      "gemini-3.5-flash-lite",
+      "gemini-2.5-flash"
     ];
 
     const makePayload = (rapide) => JSON.stringify({
@@ -135,21 +138,26 @@ export default {
     };
 
     let lastStatus = 0;
-    for (const model of models) {
-      try {
-        let r = await appeler(model, true);
-        if (r.status === 400) r = await appeler(model, false);   // ce modèle refuse l'option rapide
-        if (r.ok) {
-          const data = await r.json();
-          const outParts = (data.candidates && data.candidates[0] && data.candidates[0].content
-            && data.candidates[0].content.parts) || [];
-          const reply = outParts.map((p) => p.text || "").join("").trim();
-          return json(200, { reply: reply || "Je n'ai pas de réponse." });
+    for (let tour = 0; tour < 2; tour++) {
+      for (const model of models) {
+        try {
+          let r = await appeler(model, true);
+          if (r.status === 400) r = await appeler(model, false);   // ce modèle refuse l'option rapide
+          if (r.ok) {
+            const data = await r.json();
+            const outParts = (data.candidates && data.candidates[0] && data.candidates[0].content
+              && data.candidates[0].content.parts) || [];
+            const reply = outParts.map((p) => p.text || "").join("").trim();
+            return json(200, { reply: reply || "Je n'ai pas de réponse." });
+          }
+          // 404 = modèle indisponible : on garde le vrai code d'erreur (surcharge...) pour le message
+          if (r.status !== 404 || !lastStatus) lastStatus = r.status;
+        } catch (e) {
+          if (!lastStatus) lastStatus = -1;   // trop lent ou réseau : modèle suivant
         }
-        lastStatus = r.status;       // surcharge ou erreur : on passe tout de suite au modèle suivant
-      } catch (e) {
-        lastStatus = -1;             // trop lent ou réseau : modèle suivant
       }
+      if (lastStatus === 503 || lastStatus === 429) await new Promise((ok) => setTimeout(ok, 1200));   // deuxième tour si surchargé
+      else break;
     }
     return json(502, {
       reply: "Jarvis est très sollicité en ce moment, réessaie dans quelques secondes. (code " + lastStatus + ")"
