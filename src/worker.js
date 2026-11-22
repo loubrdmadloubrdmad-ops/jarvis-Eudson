@@ -11,6 +11,13 @@ const SYSTEM =
   "Si tu ne sais pas, dis-le simplement. " +
   "Pas de markdown, pas de listes, pas d'émojis : tes réponses seront lues à voix haute.";
 
+const CODE_RULES =
+  " MODE CODE : on te demande du code. Écris le code complet, fonctionnel et prêt à copier, dans un bloc entouré de trois accents graves avec le nom du langage (par exemple ```html ou ```python). " +
+  "Ne coupe jamais le code et n'écris pas de commentaires inutiles. Après le bloc, ajoute une ou deux phrases courtes pour dire comment l'utiliser. " +
+  "Pour tout le reste de ta réponse, garde ton ton de pote, sans autre markdown.";
+
+const CODE_WORDS = /\b(code|coder|coding|script|fonction|programme|programmer|html|css|javascript|js|python|java|kotlin|react|node|api|bug|erreur|compile|algorithme|sql|application|appli|site|page web|classe|boucle|variable|github|worker|json)\b/i;
+
 const json = (status, obj) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -67,7 +74,7 @@ export default {
     try { body = await request.json(); }
     catch { return json(400, { reply: "Requête invalide." }); }
 
-    const message = String(body.message || "").trim().slice(0, 1000) || (body.image ? "Regarde cette photo et dis-moi ce que tu vois." : "");
+    const message = String(body.message || "").trim().slice(0, 6000) || (body.image ? "Regarde cette photo et dis-moi ce que tu vois." : "");
     const image = typeof body.image === "string" && body.image.length < 2500000 ? body.image : "";
     const mime = body.mime === "image/png" ? "image/png" : "image/jpeg";
     if (!message && !image) return json(400, { reply: "Message vide." });
@@ -77,10 +84,14 @@ export default {
       if (h && (h.role === "user" || h.role === "assistant") && typeof h.content === "string") {
         contents.push({
           role: h.role === "assistant" ? "model" : "user",
-          parts: [{ text: h.content.slice(0, 1000) }]
+          parts: [{ text: h.content.slice(0, 6000) }]
         });
       }
     }
+    const hist = Array.isArray(body.history) ? body.history : [];
+    const lastBot = hist.length ? String((hist[hist.length - 1] || {}).content || "") : "";
+    const codeMode = CODE_WORDS.test(message) || lastBot.indexOf("```") !== -1;
+
     const parts = [];
     if (image) parts.push({ inline_data: { mime_type: mime, data: image } });
     parts.push({ text: message });
@@ -95,10 +106,10 @@ export default {
     ];
 
     const makePayload = (rapide) => JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: codeMode ? SYSTEM + CODE_RULES : SYSTEM }] },
       contents,
       generationConfig: Object.assign(
-        { maxOutputTokens: 400, temperature: 0.9 },
+        codeMode ? { maxOutputTokens: 8192, temperature: 0.4 } : { maxOutputTokens: 400, temperature: 0.9 },
         // Réflexion coupée = réponse beaucoup plus rapide
         rapide ? { thinkingConfig: { thinkingBudget: 0 } } : {}
       )
@@ -106,7 +117,7 @@ export default {
 
     const appeler = async (model, rapide) => {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 9000);   // pas plus de 9 s par essai
+      const t = setTimeout(() => ctrl.abort(), codeMode ? 40000 : 9000);   // 9 s en discussion, 40 s pour du code
       try {
         return await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent",
