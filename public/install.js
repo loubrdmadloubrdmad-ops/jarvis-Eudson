@@ -52,3 +52,60 @@
     }
   }, 2500);
 })();
+
+// ---------- Images : "fais-moi une image de..." ----------
+(function () {
+  var st = document.createElement("style");
+  st.textContent =
+    ".m.gen{background:none;border:0;padding:0;border-radius:0}" +
+    ".m.gen img{display:block;width:min(300px,76vw);aspect-ratio:1/1;object-fit:cover;border-radius:24px;cursor:pointer}" +
+    ".m.gen button{margin-top:8px;background:#d9dde4;color:#000;border:0;border-radius:999px;padding:8px 14px;font:600 13px system-ui,sans-serif;cursor:pointer}";
+  document.head.appendChild(st);
+
+  if (typeof ask !== "function") return;
+  var orig = ask;
+  var norm = function (s) { return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); };
+  var A = /\b(fais|fait|faire|genere|generer|cree|creer|dessine|dessiner|donne|montre|imagine|invente)\b.{0,30}\b(image|photo|illustration|dessin|logo|affiche|wallpaper|portrait|visuel|fond d.ecran)s?\b/;
+  var B = /^\s*(une?\s+)?(image|photo|dessin|illustration)\s+(de|d.)/;
+  function isImg(t) { var n = norm(t); return A.test(n) || B.test(n); }
+
+  window.ask = function (text) {
+    if (!text || busy || (typeof pending !== "undefined" && pending) || !isImg(text)) return orig(text);
+    return makeImage(text);
+  };
+
+  async function makeImage(text) {
+    busy = true; stopSpeak();
+    add(text, "u");
+    var wait = document.createElement("div");
+    wait.className = "m j dots"; wait.innerHTML = "<i></i><i></i><i></i>";
+    msgs.appendChild(wait); msgs.scrollTop = msgs.scrollHeight;
+    var data = {}, status = 0;
+    try {
+      var r = await fetch("/api/image", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: text })
+      });
+      status = r.status;
+      try { data = await r.json(); } catch (e) {}
+    } catch (e) { data = { reply: "Je n'arrive pas à joindre le serveur. Vérifie ta connexion." }; }
+    wait.remove();
+    var said;
+    if (data.image) {
+      var d = document.createElement("div"); d.className = "m j gen";
+      var im = document.createElement("img"); im.src = data.image; im.className = "zoomable"; im.alt = "Image créée";
+      var b = document.createElement("button"); b.textContent = "Télécharger";
+      b.onclick = function () { var a = document.createElement("a"); a.href = data.image; a.download = "jarvis-image.jpg"; a.click(); };
+      d.append(im, b); msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+      said = "Voilà ton image, mon gars.";
+      record(text, false, "🖼 Image créée.");
+    } else {
+      said = data.reply || ("Erreur du serveur (" + status + ")");
+      add(said, "j");
+    }
+    speak(said);
+    history.push({ role: "user", content: text }, { role: "assistant", content: data.image ? "(image créée)" : said });
+    history = history.slice(-10);
+    busy = false;
+  }
+})();
