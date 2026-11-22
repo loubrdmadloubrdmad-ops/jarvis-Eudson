@@ -18,6 +18,71 @@ const CODE_RULES =
 
 const CODE_WORDS = /\b(code|coder|coding|script|fonction|programme|programmer|html|css|javascript|js|python|java|kotlin|react|node|api|bug|erreur|compile|algorithme|sql|application|appli|site|page web|classe|boucle|variable|github|worker|json)\b/i;
 
+// ---- Autres cerveaux (secours) : actifs seulement si leur clé existe dans Cloudflare ----
+function chatMessages(history, message) {
+  const msgs = [];
+  for (const h of history.slice(-10)) {
+    if (h && (h.role === "user" || h.role === "assistant") && typeof h.content === "string" && h.content) {
+      msgs.push({ role: h.role, content: h.content.slice(0, 6000) });
+    }
+  }
+  msgs.push({ role: "user", content: message });
+  return msgs;
+}
+
+function otherBrains(env) {
+  const list = [];
+  const openaiLike = (name, key, url, model) => {
+    if (!key) return;
+    list.push({
+      name,
+      async call(system, msgs, max, temp, signal) {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + key, "content-type": "application/json" },
+          body: JSON.stringify({
+            model, max_tokens: max, temperature: temp,
+            messages: [{ role: "system", content: system }].concat(msgs)
+          }),
+          signal
+        });
+        if (!r.ok) return null;
+        const d = await r.json();
+        return ((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || "").trim();
+      }
+    });
+  };
+  // Groq (gratuit), xAI Grok, OpenAI ChatGPT
+  openaiLike("groq", env.GROQ_API_KEY, "https://api.groq.com/openai/v1/chat/completions", env.GROQ_MODEL || "llama-3.3-70b-versatile");
+  openaiLike("grok", env.XAI_API_KEY, "https://api.x.ai/v1/chat/completions", env.XAI_MODEL || "grok-4-fast");
+  openaiLike("openai", env.OPENAI_API_KEY, "https://api.openai.com/v1/chat/completions", env.OPENAI_MODEL || "gpt-4o-mini");
+  // Claude (Anthropic)
+  if (env.ANTHROPIC_API_KEY) {
+    list.push({
+      name: "claude",
+      async call(system, msgs, max, temp, signal) {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model: env.ANTHROPIC_MODEL || "claude-haiku-5-5",
+            max_tokens: max, temperature: temp, system, messages: msgs
+          }),
+          signal
+        });
+        if (!r.ok) return null;
+        const d = await r.json();
+        return ((d.content || []).map((p) => p.text || "").join("")).trim();
+      }
+    });
+  }
+  return list;
+}
+
 const json = (status, obj) =>
   new Response(JSON.stringify(obj), {
     status,
@@ -62,6 +127,58 @@ export default {
         });
       } catch (e) {
         return json(502, { reply: "ElevenLabs injoignable." });
+      }
+    }
+
+    // ---- Images : Cloudflare Workers AI (FLUX), gratuit chaque jour ----
+    if (url.pathname === "/api/image" && request.method === "POST") {
+      if (!env.AI) return json(500, { reply: "Les images ne sont pas encore activées (il manque la liaison AI dans wrangler.jsonc)." });
+      let b;
+      try { b = await request.json(); }
+      catch { return json(400, { reply: "Requête invalide." }); }
+      const raw = String(b.prompt || "").trim().slice(0, 600);
+      if (!raw) return json(400, { reply: "Dis-moi ce que tu veux voir." });
+
+      // FLUX comprend mieux l'anglais : on traduit et on détaille la demande (si ça échoue, on garde ta phrase)
+      let prompt = raw;
+      if (env.GEMINI_API_KEY) {
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 5000);
+          const r = await fetch(
+            "https://generativelanguage.googleapis.com/v1beta/models/" + (env.GEMINI_MODEL || "gemini-flash-latest") + ":generateContent",
+            {
+              method: "POST",
+              headers: { "x-goog-api-key": env.GEMINI_API_KEY, "content-type": "application/json" },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: "Transforme la demande de l'utilisateur en un prompt anglais précis et détaillé pour un générateur d'images (sujet, style, lumière, ambiance). Réponds uniquement avec le prompt, sans guillemets, en une ou deux phrases." }] },
+                contents: [{ role: "user", parts: [{ text: raw }] }],
+                generationConfig: { maxOutputTokens: 200, temperature: 0.7, thinkingConfig: { thinkingBudget: 0 } }
+              }),
+              signal: ctrl.signal
+            }
+          );
+          clearTimeout(t);
+          if (r.ok) {
+            const d = await r.json();
+            const p = (d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [];
+            const en = p.map((x) => x.text || "").join("").trim();
+            if (en) prompt = en.slice(0, 700);
+          }
+        } catch (e) { /* on garde la phrase d'origine */ }
+      }
+
+      try {
+        const out = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", { prompt, steps: 4 });
+        const img = out && out.image;
+        if (!img) throw new Error("pas d'image");
+        return json(200, { image: "data:image/jpeg;base64," + img, prompt });
+      } catch (e) {
+        const m = String((e && e.message) || e);
+        if (/limit|quota|neuron|capacity|exceed|4006/i.test(m)) {
+          return json(429, { reply: "J'ai atteint la limite d'images gratuites pour aujourd'hui. Réessaie demain." });
+        }
+        return json(502, { reply: "Je n'arrive pas à créer l'image pour l'instant. (" + m.slice(0, 80) + ")" });
       }
     }
 
@@ -154,6 +271,20 @@ export default {
           if (r.status !== 404 || !lastStatus) lastStatus = r.status;
         } catch (e) {
           if (!lastStatus) lastStatus = -1;   // trop lent ou réseau : modèle suivant
+        }
+      }
+      // Gemini est surchargé : on essaie les autres cerveaux (sans photo)
+      if (tour === 0 && !image) {
+        const msgs = chatMessages(hist, message);
+        for (const b of otherBrains(env)) {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), codeMode ? 40000 : 12000);
+          try {
+            const text = await b.call(codeMode ? SYSTEM + CODE_RULES : SYSTEM, msgs,
+              codeMode ? 8192 : 400, codeMode ? 0.4 : 0.9, ctrl.signal);
+            if (text) return json(200, { reply: text });
+          } catch (e) { /* on passe au suivant */ }
+          finally { clearTimeout(t); }
         }
       }
       if (lastStatus === 503 || lastStatus === 429) await new Promise((ok) => setTimeout(ok, 1200));   // deuxième tour si surchargé
