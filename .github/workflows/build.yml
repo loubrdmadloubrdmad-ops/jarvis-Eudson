@@ -17,7 +17,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Garder la même signature d'une version à l'autre
+      - name: Garder la même signature
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
@@ -45,5 +45,3 @@ jobs:
           tag_name: apk-${{ github.run_number }}
           name: Jarvis APK ${{ github.run_number }}
           files: Jarvis.apk
-          make_latest: 
-          true
