@@ -1,9 +1,10 @@
-name: Build APK
+name: Jarvis APK
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -14,16 +15,35 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: "17"
+
+      - name: Garder la même signature d'une version à l'autre
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: jarvis-keystore-v1
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: Build debug APK
+      - name: Icône de Jarvis
+        run: |
+          mkdir -p android/src/main/res/mipmap-xxxhdpi
+          cp public/icon-512.png android/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+      - name: Construire l'APK
+        working-directory: android
         run: gradle assembleDebug --no-daemon
 
-      - uses: actions/upload-artifact@v4
+      - name: Nommer l'APK
+        run: cp android/build/outputs/apk/debug/app-debug.apk Jarvis.apk
+
+      - name: Publier l'APK
+        uses: softprops/action-gh-release@v2
         with:
-          name: jarvis-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          tag_name: apk-${{ github.run_number }}
+          name: Jarvis APK ${{ github.run_number }}
+          files: Jarvis.apk
+          make_latest: 
+          true
