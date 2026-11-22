@@ -53,6 +53,25 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
 #toast{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 66px);transform:translateX(-50%);z-index:7;max-width:86%;
   background:#fff;color:#000;padding:9px 14px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;text-align:center}
 #toast.show{opacity:1}
+#menu{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:12px;z-index:6;width:42px;height:42px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.3);background:rgba(8,8,10,.6);color:#e8ebf0;display:grid;place-items:center;cursor:pointer;padding:0}
+#menu svg,#dh svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+#drawer{display:none;position:absolute;inset:0;z-index:20;background:#000;flex-direction:column;padding:calc(env(safe-area-inset-top) + 14px) 14px 14px}
+#drawer.on{display:flex}
+#dh{display:flex;align-items:center;justify-content:space-between;padding:6px 6px 14px}
+#dh h2{margin:0;font-size:26px;font-weight:500}
+#dh button{background:none;border:0;color:#e8ebf0;width:44px;height:44px;display:grid;place-items:center;cursor:pointer;padding:0}
+#dsearch{display:none;margin:0 0 10px;height:44px;border-radius:22px;border:1px solid rgba(255,255,255,.3);background:#0b0b0d;color:#fff;font-size:16px;padding:0 16px;outline:0;font-family:inherit}
+#dsearch.on{display:block}
+#dnew{display:flex;align-items:center;gap:16px;width:100%;height:54px;border:0;border-radius:27px;background:#161618;color:#fff;font-size:18px;padding:0 18px;cursor:pointer;font-family:inherit;margin-bottom:18px}
+#dnew svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#dlab{color:#8e939c;font-size:15px;padding:6px 8px 8px}
+#dlist{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.ci{display:flex;align-items:center;justify-content:space-between;padding:0 4px 0 8px;min-height:54px;border-radius:14px;cursor:pointer}
+.ci.cur{background:#161618}
+.ci span{flex:1;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:14px 0}
+.ci button{flex:none;width:40px;height:40px;border:0;background:none;color:#8e939c;font-size:22px;cursor:pointer}
+.dempty{color:#8e939c;padding:20px 8px;font-size:15px}
 #msgs{display:none;position:absolute;left:0;right:0;top:0;bottom:12%;overflow-y:auto;
   padding:calc(env(safe-area-inset-top) + 18px) 14px 12px;flex-direction:column;gap:10px;
   -webkit-overflow-scrolling:touch}
@@ -73,6 +92,16 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
   <div id="art">
     <img id="bg" src="1795271096456.png" alt="">
     <div id="msgs"></div>
+    <button id="menu" type="button" aria-label="Discussions"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
+    <div id="drawer">
+      <div id="dh"><h2>Jarvis</h2><div style="display:flex">
+        <button id="dsb" type="button" aria-label="Chercher"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
+        <button id="dcl" type="button" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
+      <input id="dsearch" type="text" placeholder="Chercher une discussion" autocomplete="off">
+      <button id="dnew" type="button"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Nouvelle discussion</button>
+      <div id="dlab">Discussions</div>
+      <div id="dlist"></div>
+    </div>
     <button id="spk" type="button" aria-label="Voix de Jarvis">
       <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="on-i" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="off-i" d="M17 9l5 6M22 9l-5 6"/></svg>
     </button>
@@ -141,6 +170,62 @@ spk.addEventListener("click", () => {
   if (!voiceOn) stopSpeak(); else toast("Voix activée");
 });
 
+// ---------- Discussions enregistrées (sur ce téléphone) ----------
+let convs = [], cur = null;
+try { convs = JSON.parse(localStorage.getItem("jarvis_convs") || "[]"); } catch (e) { convs = []; }
+function saveConvs(){ try { localStorage.setItem("jarvis_convs", JSON.stringify(convs.slice(0, 100))); } catch (e) {} }
+function newChat(){
+  cur = null; history = []; msgs.innerHTML = ""; stage.classList.remove("chat"); stopSpeak(); clearPhoto();
+}
+function record(userText, hadPhoto, reply){
+  if (!cur) {
+    cur = { id: String(Date.now()), t: Date.now(), title: (userText || "Photo").slice(0, 48), m: [] };
+    convs.unshift(cur);
+  }
+  cur.m.push({ r: "u", c: userText, p: hadPhoto ? 1 : 0 }, { r: "j", c: reply });
+  cur.t = Date.now();
+  convs.sort((a, b) => b.t - a.t);
+  saveConvs();
+}
+function openConv(id){
+  const c = convs.find((x) => x.id === id); if (!c) return;
+  stopSpeak(); msgs.innerHTML = ""; cur = c; history = [];
+  for (const x of c.m) {
+    if (x.r === "u") { if (x.p) add("📷 Photo envoyée", "u"); add(x.c, "u"); }
+    else add(x.c, "j");
+  }
+  history = c.m.slice(-10).map((x) => ({ role: x.r === "u" ? "user" : "assistant", content: x.c || "" }));
+  closeDrawer();
+}
+function drawList(){
+  const q = $("dsearch").value.trim().toLowerCase();
+  const box = $("dlist"); box.innerHTML = "";
+  const list = convs.filter((c) => !q || c.title.toLowerCase().includes(q) || c.m.some((x) => (x.c || "").toLowerCase().includes(q)));
+  if (!list.length) { box.innerHTML = '<div class="dempty">' + (q ? "Aucun résultat." : "Aucune discussion pour l'instant.") + "</div>"; return; }
+  for (const c of list) {
+    const row = document.createElement("div");
+    row.className = "ci" + (cur && cur.id === c.id ? " cur" : "");
+    const sp = document.createElement("span"); sp.textContent = c.title;
+    const del = document.createElement("button"); del.textContent = "×"; del.setAttribute("aria-label", "Supprimer");
+    row.onclick = () => openConv(c.id);
+    del.onclick = (e) => {
+      e.stopPropagation();
+      if (!confirm("Supprimer cette discussion ?")) return;
+      convs = convs.filter((x) => x.id !== c.id); saveConvs();
+      if (cur && cur.id === c.id) newChat();
+      drawList();
+    };
+    row.append(sp, del); box.appendChild(row);
+  }
+}
+function openDrawer(){ $("dsearch").value = ""; drawList(); $("drawer").classList.add("on"); }
+function closeDrawer(){ $("drawer").classList.remove("on"); $("dsearch").classList.remove("on"); }
+$("menu").addEventListener("click", openDrawer);
+$("dcl").addEventListener("click", closeDrawer);
+$("dsb").addEventListener("click", () => { $("dsearch").classList.toggle("on"); if ($("dsearch").classList.contains("on")) $("dsearch").focus(); });
+$("dsearch").addEventListener("input", drawList);
+$("dnew").addEventListener("click", () => { newChat(); closeDrawer(); });
+
 function add(text, who, img){
   stage.classList.add("chat");
   if (img) {
@@ -190,6 +275,7 @@ async function ask(text){
   wait.remove();
   add(reply, "j");
   speak(reply);
+  if (!/^(Je n'arrive pas|Erreur du serveur|Jarvis est très sollicité)/.test(reply)) record(shown || "", !!photo, reply);
   history.push({ role: "user", content: text }, { role: "assistant", content: reply });
   history = history.slice(-10);
   busy = false;
@@ -260,4 +346,4 @@ mic.addEventListener("click", () => {
 });
 </script>
 </body>
-</html><!DOCTYPE html
+</html>
