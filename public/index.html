@@ -44,6 +44,15 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
 #zoom img{max-width:100%;max-height:100%;object-fit:contain}
 #zoom button{position:absolute;top:calc(env(safe-area-inset-top) + 14px);right:14px;width:44px;height:44px;border-radius:50%;
   border:0;background:rgba(255,255,255,.16);color:#fff;font-size:26px;line-height:1;cursor:pointer}
+#spk{position:absolute;top:calc(env(safe-area-inset-top) + 12px);right:12px;z-index:6;width:42px;height:42px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.3);background:rgba(8,8,10,.6);color:#e8ebf0;display:grid;place-items:center;cursor:pointer;padding:0}
+#spk svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+#spk.off .on-i{display:none}
+#spk:not(.off) .off-i{display:none}
+#spk.talk{box-shadow:0 0 0 6px rgba(255,255,255,.15)}
+#toast{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 66px);transform:translateX(-50%);z-index:7;max-width:86%;
+  background:#fff;color:#000;padding:9px 14px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;text-align:center}
+#toast.show{opacity:1}
 #msgs{display:none;position:absolute;left:0;right:0;top:0;bottom:12%;overflow-y:auto;
   padding:calc(env(safe-area-inset-top) + 18px) 14px 12px;flex-direction:column;gap:10px;
   -webkit-overflow-scrolling:touch}
@@ -64,6 +73,10 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
   <div id="art">
     <img id="bg" src="1795271096456.png" alt="">
     <div id="msgs"></div>
+    <button id="spk" type="button" aria-label="Voix de Jarvis">
+      <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="on-i" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="off-i" d="M17 9l5 6M22 9l-5 6"/></svg>
+    </button>
+    <div id="toast"></div>
     <input id="file" type="file" accept="image/*" hidden>
     <div id="bar">
       <div id="prev"><div class="thumb"><img id="pimg" alt="Photo"><button id="pdel" type="button" aria-label="Retirer la photo">&times;</button></div></div>
@@ -81,6 +94,52 @@ const CONFIG = { API_URL: "/api/chat", LANG: "fr-FR" };
 const $ = (id) => document.getElementById(id);
 const stage = $("stage"), msgs = $("msgs"), inp = $("inp"), mic = $("mic");
 let history = [], busy = false;
+
+// ---------- Voix de Jarvis (ElevenLabs) ----------
+let voiceOn = true;
+try { voiceOn = localStorage.getItem("jarvis_voice") !== "off"; } catch (e) {}
+const spk = $("spk");
+spk.classList.toggle("off", !voiceOn);
+const player = new Audio();
+let toastT;
+function toast(t){
+  const el = $("toast"); el.textContent = t; el.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 3500);
+}
+function stopSpeak(){
+  try { player.pause(); player.currentTime = 0; } catch (e) {}
+  spk.classList.remove("talk");
+}
+player.onended = () => spk.classList.remove("talk");
+async function speak(text){
+  if (!voiceOn || !text) return;
+  try {
+    const r = await fetch("/api/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (!r.ok) {
+      let m = ""; try { m = (await r.json()).reply; } catch (e) {}
+      toast("Voix indisponible : " + (m || r.status));
+      return;
+    }
+    const blob = await r.blob();
+    if (player.src && player.src.startsWith("blob:")) URL.revokeObjectURL(player.src);
+    player.src = URL.createObjectURL(blob);
+    spk.classList.add("talk");
+    await player.play();
+  } catch (e) {
+    spk.classList.remove("talk");
+    toast("Voix : touche l'écran puis réessaie");
+  }
+}
+spk.addEventListener("click", () => {
+  voiceOn = !voiceOn;
+  spk.classList.toggle("off", !voiceOn);
+  try { localStorage.setItem("jarvis_voice", voiceOn ? "on" : "off"); } catch (e) {}
+  if (!voiceOn) stopSpeak(); else toast("Voix activée");
+});
 
 function add(text, who, img){
   stage.classList.add("chat");
@@ -105,6 +164,7 @@ async function ask(text){
   const photo = pending;
   if (busy || (!text && !photo)) return;
   busy = true;
+  stopSpeak();
   let shown = text;
   if (!text && photo) { text = "Regarde cette photo et dis-moi ce que tu vois."; shown = ""; }
   add(shown, "u", photo ? photo.url : null);
@@ -129,6 +189,7 @@ async function ask(text){
   }
   wait.remove();
   add(reply, "j");
+  speak(reply);
   history.push({ role: "user", content: text }, { role: "assistant", content: reply });
   history = history.slice(-10);
   busy = false;
@@ -187,6 +248,7 @@ let rec = null, listening = false;
 mic.addEventListener("click", () => {
   if (!SR) { add("Le micro n'est pas disponible sur ce navigateur. Utilise Chrome.", "j"); return; }
   if (listening) { rec.stop(); return; }
+  stopSpeak();
   rec = new SR();
   rec.lang = CONFIG.LANG;
   rec.interimResults = false;
@@ -198,4 +260,4 @@ mic.addEventListener("click", () => {
 });
 </script>
 </body>
-</html>
+</html><!DOCTYPE html
