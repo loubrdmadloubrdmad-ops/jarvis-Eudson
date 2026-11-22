@@ -73,6 +73,11 @@ html,body{height:100%;margin:0;background:#000;overflow:hidden;
 .ci span{flex:1;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:14px 0}
 .ci button{flex:none;width:40px;height:40px;border:0;background:none;color:#8e939c;font-size:22px;cursor:pointer}
 .dempty{color:#8e939c;padding:20px 8px;font-size:15px}
+.code{align-self:stretch;max-width:100%;background:#0b0b0d;border:1px solid rgba(255,255,255,.22);border-radius:16px;overflow:hidden;animation:in .25s ease both}
+.code .ch{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;background:#161618;font-size:13px;color:#aeb3bc}
+.code .ch div{display:flex;gap:6px}
+.code .ch button{background:#d9dde4;color:#000;border:0;border-radius:999px;padding:7px 13px;font:600 12px system-ui,sans-serif;cursor:pointer}
+.code pre{margin:0;padding:12px 14px;overflow:auto;max-height:55vh;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#e8ebf0;white-space:pre;tab-size:2}
 #msgs{display:none;position:absolute;left:0;right:0;top:0;bottom:12%;overflow-y:auto;
   padding:calc(env(safe-area-inset-top) + 18px) 14px 12px;flex-direction:column;gap:10px;
   -webkit-overflow-scrolling:touch}
@@ -238,12 +243,58 @@ function add(text, who, img){
     msgs.appendChild(p);
   }
   if (text) {
-    const d = document.createElement("div");
-    d.className = "m " + who;
-    d.textContent = text;
-    msgs.appendChild(d);
+    if (who === "j" && text.indexOf("```") !== -1) addRich(text);
+    else {
+      const d = document.createElement("div");
+      d.className = "m " + who;
+      d.textContent = text;
+      msgs.appendChild(d);
+    }
   }
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Réponse avec du code : texte normal + cartes de code (Copier / Télécharger)
+const EXT = { html: "html", css: "css", javascript: "js", js: "js", python: "py", py: "py", java: "java", kotlin: "kt", json: "json", sql: "sql", bash: "sh", sh: "sh", xml: "xml", ts: "ts", typescript: "ts", jsx: "jsx" };
+function bubble(t){
+  t = t.trim(); if (!t) return;
+  const d = document.createElement("div"); d.className = "m j"; d.textContent = t; msgs.appendChild(d);
+}
+function addRich(text){
+  const re = /```([\w+-]*)[ \t]*\n?([\s\S]*?)(```|$)/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    bubble(text.slice(last, m.index));
+    const lang = (m[1] || "code").toLowerCase(), code = m[2].replace(/\n$/, "");
+    const box = document.createElement("div"); box.className = "code";
+    const head = document.createElement("div"); head.className = "ch";
+    const nm = document.createElement("span"); nm.textContent = lang;
+    const act = document.createElement("div");
+    const cp = document.createElement("button"); cp.textContent = "Copier";
+    cp.onclick = async () => {
+      try { await navigator.clipboard.writeText(code); }
+      catch (e) { const t = document.createElement("textarea"); t.value = code; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+      cp.textContent = "Copié ✓"; setTimeout(() => (cp.textContent = "Copier"), 1800);
+    };
+    const dl = document.createElement("button"); dl.textContent = "Télécharger";
+    dl.onclick = () => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([code], { type: "text/plain" }));
+      a.download = "jarvis." + (EXT[lang] || "txt"); a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    };
+    act.append(cp, dl); head.append(nm, act);
+    const pre = document.createElement("pre"); pre.textContent = code;
+    box.append(head, pre); msgs.appendChild(box);
+    last = re.lastIndex;
+    if (m[3] === "") break;
+  }
+  bubble(text.slice(last));
+}
+function spoken(t){
+  if (t.indexOf("```") === -1) return t;
+  const s = t.replace(/```[\s\S]*?(```|$)/g, " ").replace(/\s+/g, " ").trim();
+  return s || "Voilà, le code est à l'écran.";
 }
 
 async function ask(text){
@@ -275,7 +326,7 @@ async function ask(text){
   }
   wait.remove();
   add(reply, "j");
-  speak(reply);
+  speak(spoken(reply));
   if (!/^(Je n'arrive pas|Erreur du serveur|Jarvis est très sollicité)/.test(reply)) record(shown || "", !!photo, reply);
   history.push({ role: "user", content: text }, { role: "assistant", content: reply });
   history = history.slice(-10);
