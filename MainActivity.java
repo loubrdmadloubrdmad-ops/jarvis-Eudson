@@ -16,6 +16,8 @@ import android.provider.MediaStore;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.util.Base64;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
@@ -39,6 +41,7 @@ import androidx.webkit.WebViewFeature;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 public class MainActivity extends Activity {
@@ -66,6 +69,9 @@ public class MainActivity extends Activity {
     ValueCallback<Uri[]> fileCb;
     boolean wantListen = false;
     String listenLang = "fr-FR";
+    TextToSpeech tts;
+    boolean ttsReady = false;
+    String pendingSay = null;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -187,6 +193,20 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Voix native d'Android (pour que Jarvis parle dans l'application)
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                ttsReady = true;
+                tts.setLanguage(Locale.FRANCE);
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    public void onStart(String id) { talk(true); }
+                    public void onDone(String id) { talk(false); }
+                    public void onError(String id) { talk(false); }
+                });
+                if (pendingSay != null) { String t = pendingSay; pendingSay = null; say(t); }
+            }
+        });
+
         web.loadUrl(SITE);
     }
 
@@ -202,11 +222,33 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void saveData(String dataUrl, String name) { saveDataUrl(dataUrl, name); }
+
+        @JavascriptInterface
+        public void say(final String text) { runOnUiThread(() -> MainActivity.this.say(text)); }
+
+        @JavascriptInterface
+        public void stopSay() {
+            runOnUiThread(() -> { if (tts != null) tts.stop(); talk(false); });
+        }
     }
 
     void js(String ev, String text) {
         final String code = "window.__jv&&window.__jv('" + ev + "'," + org.json.JSONObject.quote(text) + ")";
         runOnUiThread(() -> web.evaluateJavascript(code, null));
+    }
+
+    void talk(final boolean on) {
+        runOnUiThread(() -> web.evaluateJavascript(
+            "var s=document.getElementById('spk');if(s)s.classList.toggle('talk'," + on + ")", null));
+    }
+
+    void say(String text) {
+        if (!ttsReady) { pendingSay = text; return; }
+        int r = tts.setLanguage(Locale.FRANCE);
+        if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) {
+            toast("Il manque la voix française : Réglages > Synthèse vocale");
+        }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis");
     }
 
     void startListen(String lang) {
@@ -307,6 +349,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (sr != null) sr.destroy();
+        if (tts != null) tts.shutdown();
         super.onDestroy();
     }
-  }
+                    }
