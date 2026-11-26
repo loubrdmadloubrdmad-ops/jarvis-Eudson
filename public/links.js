@@ -1,4 +1,4 @@
-// Jarvis : Centre de liens. Les liens (envoyés ou reçus dans le chat, ou collés à la main) sont rangés par catégorie.
+// Jarvis : Centre de liens. Les liens que tu envoies, ou que Jarvis trouve vraiment sur internet, sont rangés par catégorie.
 (function () {
   var art = document.getElementById("art"), msgs = document.getElementById("msgs");
   if (!art || !msgs) return;
@@ -29,7 +29,7 @@
     var mo = Math.floor(d / 30); if (mo < 12) return "il y a " + mo + " mois";
     var y = Math.floor(d / 365); return "il y a " + y + " an" + (y > 1 ? "s" : "");
   }
-  function addLink(u, c) {
+  function addLink(u, c, title, ok) {
     u = String(u || "").trim().replace(/[.,;:!?)\]»"']+$/, "");
     if (!/^https?:\/\//i.test(u)) u = "https://" + u;
     if (!/^https?:\/\/[^\s\/]+\.[^\s\/]+/i.test(u)) return false;
@@ -38,7 +38,7 @@
     var a = load();
     if (a.some(function (x) { return x.url === u; })) return false;
     var p = ""; try { var o = new URL(u); p = o.pathname + o.search; } catch (e) {}
-    a.push({ url: u, title: (host(u) + (p === "/" ? "" : p)).slice(0, 60), cat: c || guess(u), ts: Date.now() });
+    a.push({ url: u, title: (title || (host(u) + (p === "/" ? "" : p))).slice(0, 60), cat: c || guess(/^[\w-]+(\.[\w-]+)+$/.test(title || "") ? "https://" + title : u), ts: Date.now(), ok: !!ok });
     save(a); return true;
   }
 
@@ -49,6 +49,8 @@
     "#lc .lh{display:flex;align-items:center;justify-content:space-between;flex:none;margin-bottom:10px}" +
     "#lc .lh b{font-size:21px;font-weight:600}" +
     "#lc button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}" +
+    "#lc .lhb{display:flex;gap:8px;align-items:center}" +
+    "#lc .lclr{background:none;border:1px solid rgba(255,255,255,.25);color:#aeb3bc;border-radius:999px;padding:7px 13px;font-size:13px}" +
     "#lc .lx{background:none;border:1px solid rgba(255,255,255,.35);color:#e8ebf0;width:36px;height:36px;border-radius:50%;font-size:16px}" +
     "#lc .lcats{display:flex;gap:8px;overflow-x:auto;flex:none;padding-bottom:10px;scrollbar-width:none}" +
     "#lc .lcats::-webkit-scrollbar{display:none}" +
@@ -71,7 +73,7 @@
   document.head.appendChild(css);
 
   var lc = document.createElement("div"); lc.id = "lc";
-  lc.innerHTML = '<div class="lh"><b>Centre de liens</b><button class="lx" aria-label="Fermer">✕</button></div>' +
+  lc.innerHTML = '<div class="lh"><b>Centre de liens</b><span class="lhb"><button class="lclr">Vider</button><button class="lx" aria-label="Fermer">✕</button></span></div>' +
     '<div class="lcats"></div>' +
     '<div class="lord"><button data-o="new">Nouveaux</button><button data-o="old">Anciens</button></div>' +
     '<div class="ladd"><input type="url" placeholder="Colle un lien ici" autocomplete="off"><button>Ajouter</button></div>' +
@@ -96,10 +98,10 @@
     var a = load().filter(function (x) { return cat === "Tous" || x.cat === cat; });
     a.sort(function (x, y) { return ord === "new" ? y.ts - x.ts : x.ts - y.ts; });
     elList.textContent = "";
-    if (!a.length) { elList.appendChild(el("div", "vide", "Aucun lien ici pour l'instant.\nColle un lien plus haut, ou envoie-en un dans le chat : je le range tout seul.")); elList.lastChild.style.whiteSpace = "pre-line"; return; }
+    if (!a.length) { elList.appendChild(el("div", "vide", "Aucun lien ici pour l'instant.\nColle un lien plus haut, ou demande-moi un site dans le chat : je le cherche et je le range.")); elList.lastChild.style.whiteSpace = "pre-line"; return; }
     a.forEach(function (x) {
       var row = el("div", "li"), t = el("div", "lt");
-      t.appendChild(el("b", "", x.title)); t.appendChild(el("span", "", x.cat + " · " + ago(x.ts)));
+      t.appendChild(el("b", "", x.title)); t.appendChild(el("span", "", x.cat + " · " + ago(x.ts) + (x.ok ? " · ✓ trouvé sur internet" : "")));
       var bar = el("div", "lb");
       var o = el("a", "", "Ouvrir"); o.href = x.url; o.target = "_blank"; o.rel = "noopener";
       var c = el("button", "", "Copier"); c.onclick = function () { copy(x.url, c); };
@@ -111,6 +113,7 @@
   function open() { render(); lc.classList.add("open"); }
   function close() { lc.classList.remove("open"); }
   lc.querySelector(".lx").onclick = close;
+  lc.querySelector(".lclr").onclick = function () { if (confirm("Vider tout le Centre de liens ?")) { save([]); render(); } };
   lc.querySelectorAll(".lord button").forEach(function (b) { b.onclick = function () { ord = b.dataset.o; render(); }; });
   function ajouter() {
     var v = inp.value.trim(); if (!v) return;
@@ -127,7 +130,7 @@
     if (r && /Centre de liens/.test(r.textContent)) { e.stopImmediatePropagation(); panel.classList.remove("open"); open(); }
   }, true);
 
-  // les liens vus dans le chat sont rangés automatiquement (avec ou sans https://)
+  // les liens que TU envoies dans le chat sont rangés automatiquement (avec ou sans https://)
   var TLD = "com|net|org|io|ht|fr|co|tv|me|app|dev|info|biz|ai|gg|ly|be|ca|us|uk|de|es|it|xyz|site|online|store|shop|tech|cloud|link|live|fm|cc|edu|gov|eu|ch|nl|pt|br|ru|cn|jp|in|ae|sa|mx|ar|cl|co\\.uk";
   var reUrl = /https?:\/\/[^\s<>"'`]+/gi;
   var reBare = new RegExp("(?<![@\\w./:-])(?:www\\.)?[a-z0-9][a-z0-9-]{0,61}(?:\\.[a-z0-9-]{1,30})*\\.(?:" + TLD + ")(?![\\w@-])(?:\\/[^\\s<>\"'`]*)?", "gi");
@@ -139,7 +142,7 @@
     return out;
   }
   function scan() {
-    msgs.querySelectorAll(".m, .code").forEach(function (m) {
+    msgs.querySelectorAll(".m.u").forEach(function (m) {
       var txt = m.textContent || "";
       if (m.dataset.lk === txt) return; m.dataset.lk = txt;
       found(txt).forEach(function (u) { addLink(u); });
@@ -147,5 +150,42 @@
   }
   var tm; new MutationObserver(function () { clearTimeout(tm); tm = setTimeout(scan, 500); }).observe(msgs, { childList: true, subtree: true, characterData: true });
   setInterval(scan, 3000);
+
+  // Les liens trouvés pour de vrai sur internet par Jarvis : rangés + affichés sous sa réponse avec un bouton Ouvrir
+  function nbBot() { return msgs.querySelectorAll(".m.j:not(.dots)").length; }
+  var queue = [];
+  var f0 = window.fetch;
+  window.fetch = function (u, o) {
+    var p = f0.apply(this, arguments);
+    if (typeof u === "string" && u.indexOf("/api/chat") !== -1) {
+      var n0 = nbBot();
+      p.then(function (r) { return r.clone().json(); }).then(function (d) {
+        if (d && d.links && d.links.length) {
+          d.links.forEach(function (l) { addLink(l.url, "", l.title, true); });
+          queue.push({ n0: n0, links: d.links });
+        }
+      }).catch(function () {});
+    }
+    return p;
+  };
+  function cards() {
+    if (!queue.length) return;
+    var q = queue[0], bots = msgs.querySelectorAll(".m.j:not(.dots)");
+    if (bots.length <= q.n0) return;
+    queue.shift();
+    var last = bots[bots.length - 1], box = el("div", "lkc");
+    q.links.forEach(function (l) {
+      var a = el("a", "", "🔗 " + l.title + "  ›"); a.href = l.url; a.target = "_blank"; a.rel = "noopener"; box.appendChild(a);
+    });
+    box.appendChild(el("small", "", "Rangé dans le Centre de liens ✓"));
+    last.after(box); msgs.scrollTop = msgs.scrollHeight;
+  }
+  var css2 = document.createElement("style");
+  css2.textContent = ".lkc{align-self:flex-start;max-width:86%;display:flex;flex-direction:column;gap:8px;flex:none;margin:2px 0 8px 4px}" +
+    ".lkc a{display:block;background:#d9dde4;color:#000;border-radius:14px;padding:11px 15px;font:600 15px system-ui,sans-serif;text-decoration:none;word-break:break-all}" +
+    ".lkc small{color:#8f96a3;font:12px system-ui,sans-serif;margin-left:4px}";
+  document.head.appendChild(css2);
+  new MutationObserver(function () { setTimeout(cards, 150); }).observe(msgs, { childList: true });
+  setInterval(cards, 1500);
   window.jarvisLinks = { open: open, add: addLink, scan: scan };
 })();
