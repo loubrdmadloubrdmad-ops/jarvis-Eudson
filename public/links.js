@@ -7,6 +7,9 @@
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; } }
   function save(a) { try { localStorage.setItem(KEY, JSON.stringify(a.slice(-300))); } catch (e) {} }
+  var DKEY = "jarvis_links_del";
+  function delList() { try { return JSON.parse(localStorage.getItem(DKEY) || "[]"); } catch (e) { return []; } }
+  function delAdd(u) { try { var d = delList(); d.push(u); localStorage.setItem(DKEY, JSON.stringify(d.slice(-300))); } catch (e) {} }
   function host(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } }
   function guess(u) {
     var l = u.toLowerCase(), h = host(u), img = /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/.test(l);
@@ -27,9 +30,11 @@
     var y = Math.floor(d / 365); return "il y a " + y + " an" + (y > 1 ? "s" : "");
   }
   function addLink(u, c) {
-    u = String(u || "").trim().replace(/[.,;:!?)\]]+$/, "");
-    if (!/^https?:\/\/[^\s]+\.[^\s]+/i.test(u)) return false;
+    u = String(u || "").trim().replace(/[.,;:!?)\]»"']+$/, "");
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    if (!/^https?:\/\/[^\s\/]+\.[^\s\/]+/i.test(u)) return false;
     if (host(u) === location.hostname) return false;
+    if (!c && delList().indexOf(u) !== -1) return false;
     var a = load();
     if (a.some(function (x) { return x.url === u; })) return false;
     var p = ""; try { var o = new URL(u); p = o.pathname + o.search; } catch (e) {}
@@ -99,7 +104,7 @@
       var o = el("a", "", "Ouvrir"); o.href = x.url; o.target = "_blank"; o.rel = "noopener";
       var c = el("button", "", "Copier"); c.onclick = function () { copy(x.url, c); };
       var d = el("button", "dl", "✕"); d.setAttribute("aria-label", "Supprimer");
-      d.onclick = function () { save(load().filter(function (y) { return y.url !== x.url; })); render(); };
+      d.onclick = function () { delAdd(x.url); save(load().filter(function (y) { return y.url !== x.url; })); render(); };
       bar.append(o, c, d); row.append(t, bar); elList.appendChild(row);
     });
   }
@@ -122,15 +127,25 @@
     if (r && /Centre de liens/.test(r.textContent)) { e.stopImmediatePropagation(); panel.classList.remove("open"); open(); }
   }, true);
 
-  // les liens vus dans le chat sont rangés automatiquement
-  var re = /https?:\/\/[^\s<>"'`]+/g;
+  // les liens vus dans le chat sont rangés automatiquement (avec ou sans https://)
+  var TLD = "com|net|org|io|ht|fr|co|tv|me|app|dev|info|biz|ai|gg|ly|be|ca|us|uk|de|es|it|xyz|site|online|store|shop|tech|cloud|link|live|fm|cc|edu|gov|eu|ch|nl|pt|br|ru|cn|jp|in|ae|sa|mx|ar|cl|co\\.uk";
+  var reUrl = /https?:\/\/[^\s<>"'`]+/gi;
+  var reBare = new RegExp("(?<![@\\w./:-])(?:www\\.)?[a-z0-9][a-z0-9-]{0,61}(?:\\.[a-z0-9-]{1,30})*\\.(?:" + TLD + ")(?![\\w@-])(?:\\/[^\\s<>\"'`]*)?", "gi");
+  function found(text) {
+    var out = [], t = String(text);
+    (t.match(reUrl) || []).forEach(function (u) { out.push(u); });
+    var rest = t.replace(reUrl, " ");
+    (rest.match(reBare) || []).forEach(function (u) { out.push(u); });
+    return out;
+  }
   function scan() {
-    msgs.querySelectorAll(".m").forEach(function (m) {
-      if (m.dataset.lk) return; m.dataset.lk = "1";
-      var found = (m.textContent || "").match(re) || [];
-      found.forEach(function (u) { addLink(u); });
+    msgs.querySelectorAll(".m, .code").forEach(function (m) {
+      var txt = m.textContent || "";
+      if (m.dataset.lk === txt) return; m.dataset.lk = txt;
+      found(txt).forEach(function (u) { addLink(u); });
     });
   }
-  var tm; new MutationObserver(function () { clearTimeout(tm); tm = setTimeout(scan, 400); }).observe(msgs, { childList: true, subtree: true });
-  window.jarvisLinks = { open: open, add: addLink };
+  var tm; new MutationObserver(function () { clearTimeout(tm); tm = setTimeout(scan, 500); }).observe(msgs, { childList: true, subtree: true, characterData: true });
+  setInterval(scan, 3000);
+  window.jarvisLinks = { open: open, add: addLink, scan: scan };
 })();
