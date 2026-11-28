@@ -78,7 +78,7 @@
   panel.innerHTML = html;
   var toast = document.createElement("div");
   toast.id = "ptoast";
-  art.appendChild(grip); art.appendChild(panel); art.appendChild(toast);
+  art.appendChild(panel); art.appendChild(toast);   // plus de petite poignée : le menu s'ouvre avec le bouton +
 
   var tt;
   function say(t) {
@@ -88,6 +88,8 @@
   function open() { panel.classList.add("open"); }
   function close() { panel.classList.remove("open"); }
   grip.addEventListener("click", open);
+  var plus = document.getElementById("plus");
+  if (plus) plus.addEventListener("click", function (e) { e.stopImmediatePropagation(); e.preventDefault(); open(); }, true);
   panel.querySelector("#pg2").addEventListener("click", close);
 
   // glisser vers le haut pour ouvrir, vers le bas pour fermer
